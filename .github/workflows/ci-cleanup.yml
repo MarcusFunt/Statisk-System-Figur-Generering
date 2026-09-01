@@ -19,7 +19,7 @@ jobs:
           python-version: "3.13"
       - name: Install validation tools
         run: python -m pip install "ruff==0.16.5" "mypy==2.3.1" "pytest>=8" "matplotlib>=3.7"
-      - name: Apply deterministic test and lint fixes
+      - name: Apply deterministic test and lint/type fixes
         shell: bash
         run: |
           python - <<'PY'
@@ -32,6 +32,18 @@ jobs:
               "    l=length(vector); end=add(start,vector); group.add(Line(start,end,paint))\n    head=min(preferred_head,l*0.38)",
               "    arrow_length=length(vector); end=add(start,vector); group.add(Line(start,end,paint))\n    head=min(preferred_head,arrow_length*0.38)",
           )
+          s = s.replace("    intervals.sort(); merged=[]\n", "    intervals.sort(); merged: list[tuple[float, float]]=[]\n")
+          s = s.replace(
+              "        elif isinstance(e,AngleDimension):\n            start,end=e.start_angle,e.end_angle\n            if e.clockwise and end>start: end-=360\n            if not e.clockwise and end<start: end+=360\n            angles=[start+(end-start)*i/28 for i in range(29)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Polyline(pts,paint)); mid=(start+end)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),\"center\",None,paint.color,paint.opacity))",
+              "        elif isinstance(e,AngleDimension):\n            start_angle,end_angle=e.start_angle,e.end_angle\n            if e.clockwise and end_angle>start_angle: end_angle-=360\n            if not e.clockwise and end_angle<start_angle: end_angle+=360\n            angles=[start_angle+(end_angle-start_angle)*i/28 for i in range(29)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Polyline(pts,paint)); mid=(start_angle+end_angle)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),\"center\",None,paint.color,paint.opacity))",
+          )
+          p.write_text(s)
+
+          p = Path("src/statics_diagrams/model.py")
+          s = p.read_text().replace(
+              "            elif isinstance(e, (Support, Hinge, Moment, Text, CoordinateAxes, SectionMarker, Displacement)):\n                p = e.point if hasattr(e, \"point\") else e.origin  # type: ignore[attr-defined]\n                points.append(p)",
+              "            elif isinstance(e, CoordinateAxes):\n                points.append(e.origin)\n            elif isinstance(e, (Support, Hinge, Moment, Text, SectionMarker, Displacement)):\n                points.append(e.point)",
+          )
           p.write_text(s)
 
           p = Path("tests/test_core_and_edge_cases.py")
@@ -41,8 +53,8 @@ jobs:
           )
           p.write_text(s)
 
-          # Scene snapshots should protect geometry and text anchors, not depend on
-          # the exact font metrics shipped by a particular Matplotlib release.
+          # Scene snapshots protect geometry and text anchors, not exact font metrics
+          # from one particular Matplotlib release.
           p = Path("tests/test_visual_regression.py")
           s = p.read_text()
           s = s.replace(
@@ -63,9 +75,8 @@ jobs:
               s = s.replace(old, new)
           p.write_text(s)
 
-          # Check the package against its Python 3.10 typing contract while treating
-          # external packages as opaque dependencies. NumPy's newest stubs use newer
-          # grammar and should not determine whether this package's own annotations work.
+          # Check the project against its Python 3.10 typing contract while treating
+          # third-party site packages as opaque dependencies.
           p = Path("pyproject.toml")
           s = p.read_text()
           if 'follow_imports = "skip"' not in s:

@@ -1,9 +1,9 @@
 """Output options shared by the Matplotlib and SVG renderers."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from math import isfinite
-import re
 
 _PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 

@@ -1,4 +1,12 @@
-from statics_diagrams import DEFAULT_STYLE, Diagram, ElementStyle, RenderOptions, SupportKind, render_matplotlib, render_svg
+from statics_diagrams import (
+    DEFAULT_STYLE,
+    Diagram,
+    ElementStyle,
+    RenderOptions,
+    SupportKind,
+    render_matplotlib,
+    render_svg,
+)
 
 options: RenderOptions = RenderOptions(width=6.0, background=None)
 diagram: Diagram = (

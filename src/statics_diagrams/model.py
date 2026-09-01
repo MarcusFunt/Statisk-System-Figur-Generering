@@ -1,11 +1,12 @@
 """Analysis-free semantic drawing primitives."""
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import Enum
 from math import atan2, cos, hypot, isfinite, pi, sin
-from typing import Iterator, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
 from .geometry import Transform, add, finite_point, finite_scalar, finite_vector, mul, unit
 from .style import ElementStyle
@@ -310,7 +311,7 @@ class Diagram:
 
     def beam(self, start: Point, end: Point, *, kind: Literal["beam", "bar"] = "beam", label: str | None = None,
              label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-             css_class: str | None = None, z_index: int = 0) -> "Diagram":
+             css_class: str | None = None, z_index: int = 0) -> Diagram:
         if kind not in {"beam", "bar"}: raise ValueError("kind must be 'beam' or 'bar'.")
         start, end = finite_point("start", start), finite_point("end", end)
         if start == end: raise ValueError("A beam needs two distinct points.")
@@ -319,7 +320,7 @@ class Diagram:
         return self
 
     def curved_member(self, center: Point, radius: float, start_angle: float, end_angle: float, *, kind: Literal["beam", "bar"] = "beam",
-                      label: str | None = None, style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                      label: str | None = None, style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         center = finite_point("center", center); radius = finite_scalar("radius", radius)
         if radius <= 0: raise ValueError("radius must be positive.")
         start_angle = finite_scalar("start_angle", start_angle); end_angle = finite_scalar("end_angle", end_angle)
@@ -332,7 +333,7 @@ class Diagram:
     def support(self, point: Point, kind: SupportKind | str, *, angle: float = 0.0,
                 fixed_side: Literal["left", "right", "top", "bottom"] = "bottom", label: str | None = None,
                 label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-                css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                css_class: str | None = None, z_index: int = 0) -> Diagram:
         point = finite_point("point", point); angle = finite_scalar("angle", angle)
         try: kind = SupportKind(kind)
         except ValueError as exc: raise ValueError(f"Unknown support kind: {kind!r}") from exc
@@ -345,7 +346,7 @@ class Diagram:
 
     def hinge(self, point: Point, *, radius: float | None = None, label: str | None = None,
               label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-              css_class: str | None = None, z_index: int = 0) -> "Diagram":
+              css_class: str | None = None, z_index: int = 0) -> Diagram:
         point = finite_point("point", point)
         if radius is not None:
             radius = finite_scalar("radius", radius)
@@ -357,7 +358,7 @@ class Diagram:
 
     def point_load(self, point: Point, vector: Vector, *, label: str | None = None, color: str | None = None,
                    label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-                   css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                   css_class: str | None = None, z_index: int = 0) -> Diagram:
         point = finite_point("point", point); vector = finite_vector("vector", vector, nonzero=True)
         lp, lo, cc, z = self._common(label_position, label_offset, css_class, z_index)
         self.elements.append(PointLoad(self._t().point(point), self._t().vector(vector), label, color, lp, lo, style, cc, z))
@@ -365,7 +366,7 @@ class Diagram:
 
     def force(self, *, at: Point, direction: Vector, length: float, label: str | None = None, color: str | None = None,
               label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-              css_class: str | None = None, z_index: int = 0) -> "Diagram":
+              css_class: str | None = None, z_index: int = 0) -> Diagram:
         at = finite_point("at", at); direction = finite_vector("direction", direction, nonzero=True); length = finite_scalar("length", length)
         if length <= 0: raise ValueError("length must be positive.")
         vector = mul(unit(direction), length); start = add(at, mul(vector, -1))
@@ -376,7 +377,7 @@ class Diagram:
                          count: int | None = None, offset: float | None = None, color: str | None = None,
                          label_position: LabelPosition = "auto", label_offset: Vector | None = None,
                          start_height: float | None = None, end_height: float | None = None,
-                         style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                         style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         start = finite_point("start", start); end = finite_point("end", end)
         if start == end: raise ValueError("A distributed load needs two distinct points.")
         direction = finite_vector("direction", direction, nonzero=True)
@@ -397,7 +398,7 @@ class Diagram:
     def udl(self, start: Point, end: Point, *, direction: Vector, height: float, label: str | None = None,
             count: int | None = None, color: str | None = None, label_position: LabelPosition = "auto",
             label_offset: Vector | None = None, style: ElementStyle | None = None, css_class: str | None = None,
-            z_index: int = 0) -> "Diagram":
+            z_index: int = 0) -> Diagram:
         height = finite_scalar("height", height)
         if height <= 0: raise ValueError("height must be positive.")
         return self.distributed_load(start, end, direction=direction, label=label, count=count, offset=height, color=color,
@@ -405,13 +406,13 @@ class Diagram:
 
     def varying_load(self, start: Point, end: Point, *, direction: Vector, start_height: float, end_height: float,
                      label: str | None = None, count: int | None = None, color: str | None = None,
-                     style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                     style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         return self.distributed_load(start, end, direction=direction, label=label, count=count, color=color,
             start_height=start_height, end_height=end_height, style=style, css_class=css_class, z_index=z_index)
 
     def triangular_load(self, start: Point, end: Point, *, direction: Vector, height: float, peak: Literal["start", "end"] = "end",
                         label: str | None = None, count: int | None = None, color: str | None = None,
-                        style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                        style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         height = finite_scalar("height", height)
         if height <= 0: raise ValueError("height must be positive.")
         if peak not in {"start", "end"}: raise ValueError("peak must be 'start' or 'end'.")
@@ -421,7 +422,7 @@ class Diagram:
 
     def moment(self, point: Point, *, clockwise: bool = False, label: str | None = None, radius: float | None = None,
                color: str | None = None, label_position: LabelPosition = "auto", label_offset: Vector | None = None,
-               style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+               style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         point = finite_point("point", point)
         if radius is not None:
             radius = finite_scalar("radius", radius)
@@ -433,7 +434,7 @@ class Diagram:
 
     def reaction(self, point: Point, vector: Vector, *, label: str | None = None, color: str | None = None,
                  label_position: LabelPosition = "auto", label_offset: Vector | None = None, style: ElementStyle | None = None,
-                 css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                 css_class: str | None = None, z_index: int = 0) -> Diagram:
         point = finite_point("point", point); vector = finite_vector("vector", vector, nonzero=True)
         lp, lo, cc, z = self._common(label_position, label_offset, css_class, z_index)
         self.elements.append(Reaction(self._t().point(point), self._t().vector(vector), label, color, lp, lo, style, cc, z))
@@ -443,7 +444,7 @@ class Diagram:
                   label_position: LabelPosition = "auto", label_offset: Vector | None = None,
                   extension_lines: bool = True, endpoint_style: EndpointStyle = "tick", extension_gap: float = 0.08,
                   extension_overrun: float = 0.12, style: ElementStyle | None = None, css_class: str | None = None,
-                  z_index: int = 0) -> "Diagram":
+                  z_index: int = 0) -> Diagram:
         start = finite_point("start", start); end = finite_point("end", end)
         if start == end: raise ValueError("A dimension needs two distinct points.")
         offset = finite_scalar("offset", offset); extension_gap = finite_scalar("extension_gap", extension_gap); extension_overrun = finite_scalar("extension_overrun", extension_overrun)
@@ -456,7 +457,7 @@ class Diagram:
         return self
 
     def angle_dimension(self, center: Point, start_angle: float, end_angle: float, radius: float, label: str, *, clockwise: bool = False,
-                        style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> "Diagram":
+                        style: ElementStyle | None = None, css_class: str | None = None, z_index: int = 0) -> Diagram:
         center=finite_point("center", center); start_angle=finite_scalar("start_angle", start_angle); end_angle=finite_scalar("end_angle", end_angle); radius=finite_scalar("radius", radius)
         if radius <= 0: raise ValueError("radius must be positive.")
         if start_angle == end_angle: raise ValueError("angle dimension needs a non-zero angular span.")
@@ -466,28 +467,28 @@ class Diagram:
 
     def text(self, point: Point, value: str, *, align: Literal["left", "center", "right"] = "center",
              valign: Literal["top", "center", "bottom"] = "bottom", style: ElementStyle | None = None,
-             css_class: str | None = None, z_index: int = 0) -> "Diagram":
+             css_class: str | None = None, z_index: int = 0) -> Diagram:
         if align not in {"left", "center", "right"}: raise ValueError("align must be left/center/right.")
         if valign not in {"top", "center", "bottom"}: raise ValueError("valign must be top/center/bottom.")
         self.elements.append(Text(self._t().point(finite_point("point", point)), value, align, valign, style, _css_class(css_class), _z(z_index)))
         return self
 
     def spring(self, start: Point, end: Point, *, label: str | None = None, style: ElementStyle | None = None,
-               css_class: str | None = None, z_index: int = 0) -> "Diagram":
+               css_class: str | None = None, z_index: int = 0) -> Diagram:
         start=finite_point("start",start); end=finite_point("end",end)
         if start==end: raise ValueError("A spring needs two distinct points.")
         self.elements.append(Spring(self._t().point(start), self._t().point(end), label, style, _css_class(css_class), _z(z_index)))
         return self
 
     def link(self, start: Point, end: Point, *, label: str | None = None, style: ElementStyle | None = None,
-             css_class: str | None = None, z_index: int = 0) -> "Diagram":
+             css_class: str | None = None, z_index: int = 0) -> Diagram:
         start=finite_point("start",start); end=finite_point("end",end)
         if start==end: raise ValueError("A link needs two distinct points.")
         self.elements.append(Link(self._t().point(start), self._t().point(end), label, style, _css_class(css_class), _z(z_index)))
         return self
 
     def axes(self, origin: Point=(0,0), *, x_length: float=1.5, y_length: float=1.5, x_label: str="x", y_label: str="y",
-             style: ElementStyle | None=None, css_class: str | None=None, z_index: int=40) -> "Diagram":
+             style: ElementStyle | None=None, css_class: str | None=None, z_index: int=40) -> Diagram:
         origin=finite_point("origin",origin); x_length=finite_scalar("x_length",x_length); y_length=finite_scalar("y_length",y_length)
         if x_length<=0 or y_length<=0: raise ValueError("axis lengths must be positive.")
         t=self._t(); o=t.point(origin)
@@ -495,25 +496,25 @@ class Diagram:
         return self
 
     def section_marker(self, point: Point, *, direction: Vector=(0,1), label: str | None=None,
-                       style: ElementStyle | None=None, css_class: str | None=None, z_index: int=40) -> "Diagram":
+                       style: ElementStyle | None=None, css_class: str | None=None, z_index: int=40) -> Diagram:
         point=finite_point("point",point); direction=finite_vector("direction",direction,nonzero=True)
         self.elements.append(SectionMarker(self._t().point(point), self._t().vector(direction), label, style, _css_class(css_class), _z(z_index)))
         return self
 
     def leader(self, target: Point, text_point: Point, text: str, *, style: ElementStyle | None=None,
-               css_class: str | None=None, z_index: int=45) -> "Diagram":
+               css_class: str | None=None, z_index: int=45) -> Diagram:
         self.elements.append(Leader(self._t().point(finite_point("target",target)), self._t().point(finite_point("text_point",text_point)), text,
                                     style, _css_class(css_class), _z(z_index)))
         return self
 
     def displacement(self, point: Point, vector: Vector, *, label: str | None=None, style: ElementStyle | None=None,
-                     css_class: str | None=None, z_index: int=35) -> "Diagram":
+                     css_class: str | None=None, z_index: int=35) -> Diagram:
         point=finite_point("point",point); vector=finite_vector("vector",vector,nonzero=True)
         self.elements.append(Displacement(self._t().point(point), self._t().vector(vector), label, style, _css_class(css_class), _z(z_index)))
         return self
 
     @contextmanager
-    def group(self, *, translate: Vector=(0,0), rotate: float=0.0, scale: float=1.0) -> Iterator["Diagram"]:
+    def group(self, *, translate: Vector=(0,0), rotate: float=0.0, scale: float=1.0) -> Iterator[Diagram]:
         local = Transform.from_components(translate=translate, rotate_degrees=rotate, scale=scale)
         self._transform_stack.append(local.then(self._t()))
         try:
@@ -521,7 +522,7 @@ class Diagram:
         finally:
             self._transform_stack.pop()
 
-    def add_group(self, other: "Diagram", *, translate: Vector=(0,0), rotate: float=0.0, scale: float=1.0, z_offset: int=0) -> "Diagram":
+    def add_group(self, other: Diagram, *, translate: Vector=(0,0), rotate: float=0.0, scale: float=1.0, z_offset: int=0) -> Diagram:
         transform = Transform.from_components(translate=translate, rotate_degrees=rotate, scale=scale).then(self._t())
         for element in other.elements:
             self.elements.append(_transform_element(element, transform, z_offset))
@@ -532,9 +533,10 @@ class Diagram:
         for e in self.elements:
             if isinstance(e, (Beam, Spring, Link, Dimension, DistributedLoad)):
                 points.extend((e.start, e.end))
-            elif isinstance(e, (Support, Hinge, Moment, Text, CoordinateAxes, SectionMarker, Displacement)):
-                p = e.point if hasattr(e, "point") else e.origin  # type: ignore[attr-defined]
-                points.append(p)
+            elif isinstance(e, CoordinateAxes):
+                points.append(e.origin)
+            elif isinstance(e, (Support, Hinge, Moment, Text, SectionMarker, Displacement)):
+                points.append(e.point)
             elif isinstance(e, (PointLoad, Reaction)):
                 points.extend((e.point, add(e.point, e.vector)))
             elif isinstance(e, Leader): points.extend((e.target, e.text_point))

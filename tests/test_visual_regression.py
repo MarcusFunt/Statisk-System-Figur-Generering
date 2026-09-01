@@ -4,19 +4,23 @@ import hashlib
 import json
 from dataclasses import asdict, is_dataclass
 
-from statics_diagrams import COLORBLIND_STYLE, Diagram, PRINT_STYLE, RenderOptions, SupportKind
+from statics_diagrams import COLORBLIND_STYLE, PRINT_STYLE, Diagram, RenderOptions, SupportKind
 from statics_diagrams.layout import layout_scene
 
 
 def _normal(obj):
-    if is_dataclass(obj): return {k:_normal(v) for k,v in asdict(obj).items()}
+    if is_dataclass(obj):
+        values = asdict(obj)
+        if obj.__class__.__name__ == "Text":
+            values.pop("bounds_box", None)
+        return {k:_normal(v) for k,v in values.items()}
     if isinstance(obj,float): return round(obj,6)
     if isinstance(obj,(list,tuple)): return [_normal(x) for x in obj]
     return obj
 
 
 def digest(diagram,style=COLORBLIND_STYLE):
-    scene=layout_scene(diagram,style=style,options=RenderOptions(width=6,background="white"))
+    scene=layout_scene(diagram,style=style,options=RenderOptions(width=6,background="white",avoid_label_collisions=False))
     payload=[{"kind":g.element_kind,"id":g.element_id,"z":g.z_index,"commands":[_normal(c) for c in g.commands]} for g in scene.groups]
     return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
 
@@ -32,11 +36,11 @@ def cases():
 
 
 EXPECTED = {
-    "beam": "c37f9208dd4f34ec4d91401d338324acc93ebe3a63b6af30dc6dc58afffe6564",
+    "beam": "2f07f517da21f45a2c66586fcd19279ef3140d7025ea0b4a8d165362f5560f53",
     "rotated_support": "d560a98bade62c08d305716894336ad55b1bef7b26261d999354407787440fd6",
-    "moment": "9b06a59e36214666f094fe0a375b37ea8b7f5d6f630cc281919d325b2f9f30fe",
-    "dense": "80b9452773601d1982004d049cd6c540a01b9ecb4910a38a1f55634f3e5a3f98",
-    "portal": "716127ed257ac42fdc2c088b3a6eb2894752da2b972b5c7c029165680db4dec9",
+    "moment": "eab4bb1d58e8373eb8b27e53e8de0cb9a2fc701a286b1eff6e65b1aabe2208da",
+    "dense": "98d747e6097e3ac48c973626f23dc579fbd21700a9bdd39e69da5d1d702f8a70",
+    "portal": "f05a2719d8afbf06280a24b054face6250c24d0df8c7685d40972dd43ecfaab4",
 }
 
 

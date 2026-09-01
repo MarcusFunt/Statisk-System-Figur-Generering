@@ -8,7 +8,8 @@ from .style import DEFAULT_STYLE, Style
 
 
 def _draw_command(ax,command) -> None:
-    from matplotlib.patches import Circle as MCircle, Polygon as MPolygon
+    from matplotlib.patches import Circle as MCircle
+    from matplotlib.patches import Polygon as MPolygon
     if isinstance(command,Line):
         line,=ax.plot([command.start[0],command.end[0]],[command.start[1],command.end[1]],color=command.paint.color,linewidth=command.paint.width,alpha=command.paint.opacity,solid_capstyle="round",solid_joinstyle="round")
         if command.paint.dash: line.set_dashes(command.paint.dash)

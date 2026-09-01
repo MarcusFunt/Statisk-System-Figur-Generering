@@ -1,4 +1,13 @@
-from statics_diagrams import COLORBLIND_STYLE, PRINT_STYLE, Diagram, RenderOptions, SupportKind, render_matplotlib, render_svg
+from statics_diagrams import (
+    COLORBLIND_STYLE,
+    PRINT_STYLE,
+    Diagram,
+    RenderOptions,
+    SupportKind,
+    render_matplotlib,
+    render_svg,
+)
+
 
 def _cases():
     return {

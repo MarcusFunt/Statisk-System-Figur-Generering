@@ -104,7 +104,7 @@ class Transform:
     def from_components(
         cls, *, translate: Vector = (0.0, 0.0), rotate_degrees: float = 0.0, scale: float = 1.0,
         mirror_x: bool = False,
-    ) -> "Transform":
+    ) -> Transform:
         finite_vector("translate", translate)
         rotate_degrees = finite_scalar("rotate", rotate_degrees)
         scale = finite_scalar("scale", scale)
@@ -127,7 +127,7 @@ class Transform:
     def vector(self, v: Vector) -> Vector:
         return self.a * v[0] + self.b * v[1], self.c * v[0] + self.d * v[1]
 
-    def then(self, outer: "Transform") -> "Transform":
+    def then(self, outer: Transform) -> Transform:
         """Apply self, then outer."""
         return Transform(
             a=outer.a * self.a + outer.b * self.c,

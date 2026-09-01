@@ -9,8 +9,14 @@ from xml.etree import ElementTree
 import pytest
 
 from statics_diagrams import (
-    DEFAULT_STYLE, Diagram, ElementStyle, RenderOptions, Style, SupportKind,
-    render_matplotlib, render_svg,
+    DEFAULT_STYLE,
+    Diagram,
+    ElementStyle,
+    RenderOptions,
+    Style,
+    SupportKind,
+    render_matplotlib,
+    render_svg,
 )
 from statics_diagrams.layout import Circle, Line, Polygon, Text, layout_scene
 from statics_diagrams.svg_renderer import _Canvas
@@ -97,7 +103,7 @@ def test_fixed_support_wall_contains_hatch_roots():
     s=layout_scene(Diagram().support((0,0),"fixed",fixed_side="bottom"),style=DEFAULT_STYLE,options=RenderOptions())
     g=next(g for g in s.groups if g.element_kind=="support")
     lines=[c for c in g.commands if isinstance(c,Line)]
-    wall=max(lines,key=lambda l: math.hypot(l.end[0]-l.start[0],l.end[1]-l.start[1]))
+    wall=max(lines,key=lambda line: math.hypot(line.end[0]-line.start[0],line.end[1]-line.start[1]))
     lo,hi=sorted((wall.start[0],wall.end[0]))
     for hatch in lines:
         if hatch is wall: continue

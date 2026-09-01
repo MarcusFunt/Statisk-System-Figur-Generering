@@ -1,8 +1,20 @@
 from __future__ import annotations
+
 from xml.etree import ElementTree
+
 import pytest
-from statics_diagrams import COLORBLIND_STYLE, MONOCHROME_STYLE, Diagram, RenderOptions, SupportKind, render_matplotlib, render_svg
+
+from statics_diagrams import (
+    COLORBLIND_STYLE,
+    MONOCHROME_STYLE,
+    Diagram,
+    RenderOptions,
+    SupportKind,
+    render_matplotlib,
+    render_svg,
+)
 from statics_diagrams.layout import Text, layout_scene
+
 
 def test_moment_only_svg_uses_bounds_that_contain_the_moment():
     svg=render_svg(Diagram().moment((10,10),radius=2)).content; root=ElementTree.fromstring(svg); view_box=[float(v) for v in root.attrib['viewBox'].split()]; polyline=root.find('.//{http://www.w3.org/2000/svg}polyline'); assert polyline is not None; coordinates=[float(v) for v in polyline.attrib['points'].split()]; assert view_box[2]>0 and view_box[3]>0; assert all(0<=x<=view_box[2] for x in coordinates[::2]); assert all(0<=y<=view_box[3] for y in coordinates[1::2])

@@ -1,8 +1,8 @@
 """Backend-neutral-ish text measurement with an optional high-fidelity Matplotlib path."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import unicodedata
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

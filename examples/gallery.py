@@ -1,7 +1,15 @@
 """Generate a small gallery of common statics-diagrams figures."""
 from pathlib import Path
 
-from statics_diagrams import COLORBLIND_STYLE, Diagram, ElementStyle, PRINT_STYLE, RenderOptions, render_matplotlib, render_svg
+from statics_diagrams import (
+    COLORBLIND_STYLE,
+    PRINT_STYLE,
+    Diagram,
+    ElementStyle,
+    RenderOptions,
+    render_matplotlib,
+    render_svg,
+)
 
 OUT = Path(__file__).with_name("output")
 OUT.mkdir(exist_ok=True)

@@ -1,15 +1,34 @@
 """Resolve semantic diagrams into a backend-neutral hierarchical scene."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from math import cos, hypot, pi, sin
-from typing import Iterable, TypeAlias
+from typing import TypeAlias
 
 from .geometry import Point, Vector, add, arrow_head, interpolate, length, mul, normal, rotate, spring_points, unit
 from .model import (
-    AngleDimension, ArcMember, Beam, CoordinateAxes, Diagram, Dimension, Displacement,
-    DistributedLoad, Hinge, Leader, Link, Moment, PointLoad, Reaction, SectionMarker,
-    Spring, Support, SupportKind, Text as SemanticText,
+    AngleDimension,
+    ArcMember,
+    Beam,
+    CoordinateAxes,
+    Diagram,
+    Dimension,
+    Displacement,
+    DistributedLoad,
+    Hinge,
+    Leader,
+    Link,
+    Moment,
+    PointLoad,
+    Reaction,
+    SectionMarker,
+    Spring,
+    Support,
+    SupportKind,
+)
+from .model import (
+    Text as SemanticText,
 )
 from .options import RenderOptions
 from .style import ElementStyle, Style
@@ -23,13 +42,13 @@ class Bounds:
     def width(self) -> float: return max(self.x1-self.x0, 1e-12)
     @property
     def height(self) -> float: return max(self.y1-self.y0, 1e-12)
-    def union(self, other: "Bounds") -> "Bounds":
+    def union(self, other: Bounds) -> Bounds:
         return Bounds(min(self.x0,other.x0),max(self.x1,other.x1),min(self.y0,other.y0),max(self.y1,other.y1))
-    def padded(self, amount: float, vertical_ratio: float=1.0) -> "Bounds":
+    def padded(self, amount: float, vertical_ratio: float=1.0) -> Bounds:
         return Bounds(self.x0-amount,self.x1+amount,self.y0-amount*vertical_ratio,self.y1+amount*vertical_ratio)
-    def intersects(self, other: "Bounds", padding: float=0.0) -> bool:
+    def intersects(self, other: Bounds, padding: float=0.0) -> bool:
         return not (self.x1+padding < other.x0 or other.x1+padding < self.x0 or self.y1+padding < other.y0 or other.y1+padding < self.y0)
-    def overlap_area(self, other: "Bounds") -> float:
+    def overlap_area(self, other: Bounds) -> float:
         dx=max(0.0,min(self.x1,other.x1)-max(self.x0,other.x0)); dy=max(0.0,min(self.y1,other.y1)-max(self.y0,other.y0)); return dx*dy
 
 
@@ -143,8 +162,8 @@ def _text_command(point: Point,value: str,*,color: str,style: Style,scale: float
 
 
 def _arrow(group: ElementGroup,start: Point,vector: Vector,*,paint: Paint,preferred_head: float) -> None:
-    l=length(vector); end=add(start,vector); group.add(Line(start,end,paint))
-    head=min(preferred_head,l*0.38)
+    arrow_length=length(vector); end=add(start,vector); group.add(Line(start,end,paint))
+    head=min(preferred_head,arrow_length*0.38)
     if head <= 0: return
     left,right=arrow_head(end,vector,head); group.add(Polygon((end,left,right),Paint(paint.color,max(paint.width*0.7,0.1),fill=paint.color,opacity=paint.opacity)))
 
@@ -199,7 +218,7 @@ def _clip_segment(start: Point,end: Point,circles: list[tuple[Point,float]]) -> 
         root=disc**0.5; t0=max(0.0,(-b-root)/(2*a)); t1=min(1.0,(-b+root)/(2*a))
         if t0<t1: intervals.append((t0,t1))
     if not intervals:return [(start,end)]
-    intervals.sort(); merged=[]
+    intervals.sort(); merged: list[tuple[float, float]]=[]
     for lo,hi in intervals:
         if merged and lo<=merged[-1][1]: merged[-1]=(merged[-1][0],max(merged[-1][1],hi))
         else: merged.append((lo,hi))
@@ -308,10 +327,10 @@ def layout_scene(diagram: Diagram, *, style: Style, options: RenderOptions) -> S
                 d=(end[0]-start[0],end[1]-start[1]); _arrow(g,add(start,mul(unit(d),scale*.5)),mul(unit(d),-scale*.5),paint=paint,preferred_head=scale*.16); _arrow(g,add(end,mul(unit(d),-scale*.5)),mul(unit(d),scale*.5),paint=paint,preferred_head=scale*.16)
             labels.append(LabelSpec(g,e.label,interpolate(start,end,.5),mul(nv,scale*.38),e.label_position,e.label_offset,paint.color,paint.opacity))
         elif isinstance(e,AngleDimension):
-            start,end=e.start_angle,e.end_angle
-            if e.clockwise and end>start: end-=360
-            if not e.clockwise and end<start: end+=360
-            angles=[start+(end-start)*i/28 for i in range(29)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Polyline(pts,paint)); mid=(start+end)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),"center",None,paint.color,paint.opacity))
+            start_angle,end_angle=e.start_angle,e.end_angle
+            if e.clockwise and end_angle>start_angle: end_angle-=360
+            if not e.clockwise and end_angle<start_angle: end_angle+=360
+            angles=[start_angle+(end_angle-start_angle)*i/28 for i in range(29)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Polyline(pts,paint)); mid=(start_angle+end_angle)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),"center",None,paint.color,paint.opacity))
         elif isinstance(e,SemanticText):
             p=_paint(style,override,color=style.ink,width=1.0); g.add(_text_command(e.point,e.value,color=p.color,style=style,scale=scale,align=e.align,valign=e.valign,opacity=p.opacity))
         elif isinstance(e,Spring):

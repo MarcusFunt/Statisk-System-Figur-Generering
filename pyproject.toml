@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "statics-diagrams"
-version = "0.2.0"
-description = "Publication-quality statics diagrams in Matplotlib and standalone SVG."
+version = "0.3.0"
+description = "Publication-quality, analysis-free statics diagrams in standalone SVG and Matplotlib."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -23,10 +23,19 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = ["matplotlib>=3.7"]
+dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+matplotlib = ["matplotlib>=3.7"]
+all = ["matplotlib>=3.7"]
+dev = [
+    "matplotlib>=3.7",
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "build>=1.2",
+    "twine>=5",
+]
 
 [project.urls]
 Homepage = "https://github.com/MarcusFunt/Statisk-System-Figur-Generering"
@@ -48,8 +57,17 @@ addopts = "-ra"
 
 [tool.ruff]
 target-version = "py310"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "E701", "E702", "E703"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+exclude = ["tests/"]

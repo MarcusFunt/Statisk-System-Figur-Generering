@@ -1,22 +1,24 @@
 # statics-diagrams
 
-`statics-diagrams` is a small, analysis-free Python library for producing
-clear statics and strength-of-materials figures. It provides the familiar
-symbol vocabulary—beams, supports, hinges, springs, loads, reactions,
-dimensions, and labels—without needing LaTeX or a structural solver.
+`statics-diagrams` is an **analysis-free** Python library for producing clean statics and strength-of-materials figures. It draws the system you describe; it does not calculate reactions, stiffness, or stresses.
 
-It can render to:
-
-- Matplotlib figures for PNG, PDF, and SVG export.
-- Standalone SVG documents that remain editable in vector-graphics tools.
+The library has a dependency-free standalone SVG backend and an optional Matplotlib backend for PNG/PDF/SVG export.
 
 ## Installation
+
+SVG only:
 
 ```bash
 pip install statics-diagrams
 ```
 
-For development, clone the repository and install the development extras:
+With Matplotlib:
+
+```bash
+pip install "statics-diagrams[matplotlib]"
+```
+
+Development:
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -25,64 +27,98 @@ python -m pip install -e ".[dev]"
 ## Quick start
 
 ```python
-from statics_diagrams import Diagram, RenderOptions, SupportKind, render_matplotlib, render_svg
+from statics_diagrams import Diagram, RenderOptions, SupportKind, render_svg
 
-diagram = Diagram(title="Simply supported beam")
-diagram.beam((0, 0), (8, 0), label="AB")
-diagram.support((0, 0), SupportKind.PIN, label="A")
-diagram.support((8, 0), SupportKind.ROLLER, label="B")
-diagram.force(at=(3.5, 0), direction=(0, -1), length=1.4, label="F")
-diagram.udl((4.5, 0), (7.2, 0), direction=(0, -1), height=1.0, label="q")
-diagram.dimension((0, -1.45), (8, -1.45), "L")
+beam = (
+    Diagram(title="Simply supported beam")
+    .beam((0, 0), (8, 0), label="AB")
+    .support((0, 0), SupportKind.PIN, label="A")
+    .support((8, 0), SupportKind.ROLLER, label="B")
+    .force(at=(3.5, 0), direction=(0, -1), length=1.4, label="F")
+    .udl((4.5, 0), (7.2, 0), direction=(0, -1), height=1.0, label="q")
+    .dimension((0, -1.45), (8, -1.45), "L", offset=0.0)
+)
 
-options = RenderOptions(width=7, dpi=220, background="white")
-render_matplotlib(diagram, options=options).savefig("beam.png", dpi=options.dpi)
-render_svg(diagram, options=options).save("beam.svg")
+render_svg(beam, options=RenderOptions(width=7, background=None)).save("beam.svg")
 ```
 
-Coordinates are drawing coordinates: no stiffness, material, units, or
-calculation model is implied. Positive `x` is right and positive `y` is up.
-For point loads and reactions, a vector points in the arrowhead direction.
+For Matplotlib:
 
-## Layout, labels, and styling
+```python
+from statics_diagrams import render_matplotlib
+fig = render_matplotlib(beam, options=RenderOptions(width=7, background="white"))
+fig.savefig("beam.png", dpi=220)
+```
 
-Both renderers use the same resolved scene layout. It calculates the drawing
-bounds from every symbol, marker, label, and title, so standalone moments and
-labels at the edge of a diagram are framed correctly. SVG exports use semantic
-`<g>` elements with stable `id` and `data-kind` attributes for easier editing.
+## Drawing vocabulary
 
-Use `label_position` (`"above"`, `"below"`, `"left"`, `"right"`, or
-`"center"`) or `label_offset=(dx, dy)` on labelled primitives when you want
-direct placement. Automatic labels try clear alternatives by default; pass
-`RenderOptions(avoid_label_collisions=False)` to retain deterministic default
-placement.
+Core primitives include beams/bars, curved members, pin/roller/fixed/spring/guided/sliding supports, hinges, point loads, reactions, moments, uniform/triangular/trapezoidal distributed loads, dimensions, angle dimensions, standalone springs, links, coordinate axes, section markers, leader annotations, prescribed displacement arrows, and text.
 
-`RenderOptions` gives both renderers the same physical width/height, DPI,
-padding, and background behaviour. Omitting one dimension derives it from the
-laid-out aspect ratio, avoiding a fixed, letterboxed canvas. `background=None`
-creates a transparent canvas.
+Distributed-load arrow density is automatic by default and can be overridden with `count=N`.
 
-The public `Style` class controls colours, line widths and dash patterns,
-marker size, fonts, and the hinge fill. Built-in themes are `DEFAULT_STYLE`,
-`MONOCHROME_STYLE`, `PRINT_STYLE`, and `COLORBLIND_STYLE`.
+## Ordered scene, layers, transforms, and styling
 
-Use `force(at=..., direction=..., length=...)` for a semantic point force: its
-arrowhead is guaranteed to land at `at`. `udl(..., direction=..., height=...)`
-does the same for uniformly distributed loads. The original `point_load` and
-`distributed_load` methods remain available as low-level drawing primitives.
+Calls are drawn in insertion order by default. Set `z_index=` only when you need an explicit layer override.
+
+```python
+diagram = Diagram()
+with diagram.group(translate=(4, 2), rotate=30):
+    diagram.beam((0, 0), (3, 0))
+    diagram.support((0, 0), "pin")
+```
+
+Per-element styling uses `ElementStyle` and inherits all unspecified values from the global theme:
+
+```python
+from statics_diagrams import ElementStyle
+
+diagram.beam((0, 0), (4, 0), style=ElementStyle(color="#0057b8", line_width=4), css_class="highlight")
+```
+
+Built-in themes are `DEFAULT_STYLE`, `MONOCHROME_STYLE`, `PRINT_STYLE`, and `COLORBLIND_STYLE`.
+
+## Labels and text
+
+Automatic labels use scored collision-aware candidate placement. Explicit `label_position=` or `label_offset=` remains authoritative. Multiline text using `\n` is supported by both backends.
+
+Text is **literal by default**, including dollar signs. This avoids Matplotlib MathText producing output that standalone SVG cannot match. Prefer Unicode (`σ`, `Δ`, `Aᵧ`) for engineering notation until a shared explicit math-markup mode is added.
+
+## SVG semantics
+
+Each logical diagram element is emitted as one stable semantic `<g>` with `id` and `data-kind`. To inline multiple generated SVGs into the same HTML document, give each a namespace:
+
+```python
+RenderOptions(svg_id_prefix="beam-example-1")
+```
+
+All geometry uses a uniform world-to-output scale, even when both output width and height are specified.
+
+The legacy `pixels_per_unit=` SVG argument retains its original meaning: the requested number of SVG viewBox units per drawing-space unit.
+
+## Dimensions
+
+Offset dimensions can draw witness/extension lines and choose endpoint styles:
+
+```python
+diagram.dimension(
+    (0, 0), (8, 0), "8 m",
+    offset=-1.2,
+    extension_lines=True,
+    endpoint_style="arrow",  # tick | arrow | slash | dot | none
+)
+```
 
 ## Development
 
 ```bash
 python -m pytest
 python -m ruff check .
-python examples/gallery.py
+python -m mypy src/statics_diagrams tests/typing_usage.py
+python -m build
 ```
 
-The gallery writes generated files to `examples/output/`, which is deliberately
-not tracked. Continuous integration runs the test suite and lint checks on
-supported Python versions.
+CI additionally tests the declared Matplotlib 3.7 dependency floor, a no-Matplotlib SVG-only install, built wheel/sdist artifacts, and deterministic scene-level visual regression snapshots.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+MIT.

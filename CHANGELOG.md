@@ -24,6 +24,7 @@
 - Dimension witness lines and configurable endpoint styles.
 - Dependency-free SVG installation; Matplotlib is now an optional extra.
 - Scene-level visual regression tests, edge-case tests, minimum-Matplotlib CI, static typing CI, and wheel/sdist smoke tests.
+- Release validation now covers Python 3.10–3.13, Ruff, mypy, Matplotlib 3.7, SVG-only installation, and built distribution artifacts.
 
 ## [0.2.0] - 2026-09-01
 - Shared scene layout, output options, semantic load helpers, themes, label placement, and semantic SVG grouping.

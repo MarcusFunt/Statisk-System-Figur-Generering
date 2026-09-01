@@ -63,12 +63,15 @@ jobs:
               s = s.replace(old, new)
           p.write_text(s)
 
-          # Keep the public typing target at Python 3.10 while skipping internals
-          # of third-party stubs (new NumPy stubs use syntax newer than that target).
+          # Check the package against its Python 3.10 typing contract while treating
+          # external packages as opaque dependencies. NumPy's newest stubs use newer
+          # grammar and should not determine whether this package's own annotations work.
           p = Path("pyproject.toml")
           s = p.read_text()
           if 'follow_imports = "skip"' not in s:
               s = s.replace('python_version = "3.10"\n', 'python_version = "3.10"\nfollow_imports = "skip"\n')
+          if 'no_site_packages = true' not in s:
+              s = s.replace('follow_imports = "skip"\n', 'follow_imports = "skip"\nno_site_packages = true\n')
           p.write_text(s)
           PY
           python -m ruff check . --fix

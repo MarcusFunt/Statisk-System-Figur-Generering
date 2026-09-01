@@ -27,3 +27,70 @@ jobs:
         run: python -m pytest
       - name: Run lint checks
         run: python -m ruff check .
+
+  minimum-matplotlib:
+    name: Matplotlib 3.7 floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: python -m pip install "matplotlib==3.7.*" "pytest>=8"
+      - run: python -m pip install -e . --no-deps
+      - run: python -m pytest
+
+  svg-only:
+    name: SVG-only install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e . --no-deps
+      - name: Verify dependency-free SVG rendering
+        run: |
+          python - <<'PY'
+          import sys
+          import statics_diagrams
+          from statics_diagrams import Diagram, render_svg
+          assert "matplotlib" not in sys.modules
+          svg = render_svg(Diagram().beam((0, 0), (2, 0))).content
+          assert svg.startswith("<svg")
+          PY
+
+  typing:
+    name: Static typing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e ".[matplotlib]" "mypy>=1.10"
+      - run: python -m mypy src/statics_diagrams tests/typing_usage.py
+
+  package:
+    name: Build distribution artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install "build>=1.2" "twine>=5"
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Install wheel and smoke-test outside source tree
+        shell: bash
+        run: |
+          WHEEL=$(find dist -name '*.whl' -print -quit)
+          python -m pip install --force-reinstall --no-deps "$WHEEL"
+          cd /tmp
+          python - <<'PY'
+          import importlib.resources
+          from statics_diagrams import Diagram, render_svg
+          assert importlib.resources.files("statics_diagrams").joinpath("py.typed").is_file()
+          assert render_svg(Diagram().beam((0, 0), (1, 0))).content.startswith("<svg")
+          PY

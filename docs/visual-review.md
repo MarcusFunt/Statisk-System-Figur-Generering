@@ -21,6 +21,18 @@ output for five diagrams:
   instead of encoding a collision as a reference image.
 - Creating a Matplotlib figure could select a Tk backend and fail in a
   headless environment. The renderer now creates an Agg-backed figure.
+- Label collision envelopes now include rendered stroke width, so text is not
+  allowed to cross zero-area horizontal or vertical lines.
+- Symbol dimensions are tied to a physical reference size, rather than being
+  inferred only from the diagram span. Dimension witness lines and arrowheads
+  use the same physical sizing model.
+- Moments and curved members use native arc scene commands. Angular dimensions
+  include radial witnesses and inward arrowheads, while leaders terminate at
+  measured text-box edges.
+- Multiline text metrics, font fallbacks, guided/slider supports, section
+  markers, and displacement arrows are rendered consistently by both
+  backends. Engineering subscript/superscript markup remains an explicit
+  future API because text is intentionally literal today.
 
 ## Final inspection
 

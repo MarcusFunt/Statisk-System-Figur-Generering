@@ -50,11 +50,31 @@ class Bounds:
         return not (self.x1+padding < other.x0 or other.x1+padding < self.x0 or self.y1+padding < other.y0 or other.y1+padding < self.y0)
     def overlap_area(self, other: Bounds) -> float:
         dx=max(0.0,min(self.x1,other.x1)-max(self.x0,other.x0)); dy=max(0.0,min(self.y1,other.y1)-max(self.y0,other.y0)); return dx*dy
+    def expanded(self, amount: float) -> Bounds:
+        return Bounds(self.x0-amount,self.x1+amount,self.y0-amount,self.y1+amount)
 
 
 def _bounds_points(points: Iterable[Point]) -> Bounds:
     pts=list(points); xs=[p[0] for p in pts]; ys=[p[1] for p in pts]
     return Bounds(min(xs),max(xs),min(ys),max(ys))
+
+
+def _arc_angles(start: float, end: float, count: int) -> list[float]:
+    return [start+(end-start)*i/count for i in range(count+1)]
+
+
+def _arc_point(center: Point, radius: float, angle: float) -> Point:
+    theta=angle*pi/180
+    return center[0]+radius*cos(theta), center[1]+radius*sin(theta)
+
+
+def _angle_on_arc(angle: float, start: float, end: float) -> bool:
+    span=end-start
+    if abs(span)>=360:
+        return True
+    if span>0:
+        return (angle-start)%360 <= span+1e-9
+    return (start-angle)%360 <= -span+1e-9
 
 
 @dataclass(frozen=True)
@@ -70,28 +90,49 @@ class Paint:
 class Line:
     start: Point; end: Point; paint: Paint
     def bounds(self) -> Bounds: return _bounds_points((self.start,self.end))
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds:
+        return self.bounds().expanded(self.paint.width*stroke_world_per_point/2)
 
 @dataclass(frozen=True)
 class Polyline:
     points: tuple[Point,...]; paint: Paint
     def bounds(self) -> Bounds: return _bounds_points(self.points)
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds:
+        return self.bounds().expanded(self.paint.width*stroke_world_per_point/2)
 
 @dataclass(frozen=True)
 class Polygon:
     points: tuple[Point,...]; paint: Paint
     def bounds(self) -> Bounds: return _bounds_points(self.points)
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds:
+        return self.bounds().expanded(self.paint.width*stroke_world_per_point/2)
 
 @dataclass(frozen=True)
 class Circle:
     center: Point; radius: float; paint: Paint
     def bounds(self) -> Bounds: return Bounds(self.center[0]-self.radius,self.center[0]+self.radius,self.center[1]-self.radius,self.center[1]+self.radius)
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds:
+        return self.bounds().expanded(self.paint.width*stroke_world_per_point/2)
+
+
+@dataclass(frozen=True)
+class Arc:
+    center: Point; radius: float; start_angle: float; end_angle: float; paint: Paint
+    def bounds(self) -> Bounds:
+        angles=_arc_angles(self.start_angle,self.end_angle,96)
+        angles.extend(angle for angle in (0.0,90.0,180.0,270.0) if _angle_on_arc(angle,self.start_angle,self.end_angle))
+        points=tuple(_arc_point(self.center,self.radius,a) for a in angles)
+        return _bounds_points(points)
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds:
+        return self.bounds().expanded(self.paint.width*stroke_world_per_point/2)
 
 @dataclass(frozen=True)
 class Text:
-    point: Point; value: str; color: str; size: float; font_family: str; align: str; valign: str; line_spacing: float; bounds_box: Bounds; opacity: float=1.0
+    point: Point; value: str; color: str; size: float; font_family: str; align: str; valign: str; line_spacing: float; bounds_box: Bounds; opacity: float=1.0; font_fallback: tuple[str,...]=()
     def bounds(self) -> Bounds: return self.bounds_box
+    def collision_bounds(self, stroke_world_per_point: float) -> Bounds: return self.bounds_box
 
-Command: TypeAlias = Line | Polyline | Polygon | Circle | Text
+Command: TypeAlias = Line | Polyline | Polygon | Circle | Arc | Text
 
 
 @dataclass
@@ -116,7 +157,9 @@ class Scene:
     scale: float = 0.1
     @property
     def commands(self) -> list[Command]: return [c for g in self.groups for c in g.commands]
-    def occupied(self) -> list[Bounds]: return [c.bounds() for c in self.commands if not isinstance(c,Text)]
+    def occupied(self, text_size: float = 10.5) -> list[Bounds]:
+        stroke_world_per_point=self.scale*0.068/text_size
+        return [c.collision_bounds(stroke_world_per_point) for c in self.commands if not isinstance(c,Text)]
     def recalculate_bounds(self) -> None:
         out=None
         for g in self.groups:
@@ -158,7 +201,7 @@ def _text_bounds(point: Point, value: str, scale: float, style: Style, align: st
 
 
 def _text_command(point: Point,value: str,*,color: str,style: Style,scale: float,align: str="center",valign: str="bottom",multiplier: float=1.0,opacity: float=1.0) -> Text:
-    return Text(point,value,color,style.text_size*multiplier,style.font_family,align,valign,style.line_spacing,_text_bounds(point,value,scale,style,align,valign,multiplier),opacity)
+    return Text(point,value,color,style.text_size*multiplier,style.font_family,align,valign,style.line_spacing,_text_bounds(point,value,scale,style,align,valign,multiplier),opacity,style.font_fallback)
 
 
 def _arrow(group: ElementGroup,start: Point,vector: Vector,*,paint: Paint,preferred_head: float) -> None:
@@ -181,7 +224,7 @@ def _support(group: ElementGroup,s: Support,scale: float,style: Style,background
     ink=_paint(style,s.style,color=style.ink,width=1.5)
     if s.kind is SupportKind.FIXED:
         base={"left":(-1.0,0.0),"right":(1.0,0.0),"top":(0.0,1.0),"bottom":(0.0,-1.0)}[s.fixed_side]
-        direction=rotate(base,s.angle); cross=normal(direction); end=add(s.point,mul(direction,scale*0.2)); half=scale*1.15
+        direction=rotate(base,s.angle); cross=normal(direction); end=s.point; half=scale*1.15
         group.add(Line(add(end,mul(cross,-half)),add(end,mul(cross,half)),_paint(style,s.style,color=style.ink,width=style.beam_width+0.9)))
         hatch=_paint(style,s.style,color=style.ground,width=1.0)
         for marker in (-0.85,-0.45,-0.05,0.35,0.75):
@@ -191,6 +234,7 @@ def _support(group: ElementGroup,s: Support,scale: float,style: Style,background
         end=add(s.point,mul(down,height*1.35)); group.add(Polyline(tuple(spring_points(s.point,down,height*1.35,width*0.22)),_paint(style,s.style,color=style.ink,width=1.3))); _ground(group,end,tangent,down,width*1.25,style,s.style); return s.point,down
     if s.kind in {SupportKind.GUIDED,SupportKind.SLIDER}:
         center=add(s.point,mul(down,height*0.35)); box_w,box_h=width*0.8,scale*0.52
+        group.add(Line(s.point,add(s.point,mul(down,scale*0.30)),ink))
         corners=(add(add(center,mul(tangent,-box_w/2)),mul(down,-box_h/2)),add(add(center,mul(tangent,box_w/2)),mul(down,-box_h/2)),add(add(center,mul(tangent,box_w/2)),mul(down,box_h/2)),add(add(center,mul(tangent,-box_w/2)),mul(down,box_h/2)))
         group.add(Polygon(corners,Paint(ink.color,ink.width,fill=background,opacity=ink.opacity)))
         rail=add(center,mul(down,box_h)); _ground(group,rail,tangent,down,width,style,s.style)
@@ -250,9 +294,20 @@ def _label_candidates(spec: LabelSpec,scale: float,style: Style) -> list[tuple[P
     return [(p,v,_text_bounds(p,spec.value,scale,style,"center",v),pref) for p,v,pref in raw]
 
 
+def _leader_edge(target: Point, text_point: Point, box: Bounds, gap: float) -> Point:
+    direction=unit((target[0]-text_point[0],target[1]-text_point[1]))
+    distances=[]
+    if direction[0]>0: distances.append((box.x1-text_point[0])/direction[0])
+    elif direction[0]<0: distances.append((box.x0-text_point[0])/direction[0])
+    if direction[1]>0: distances.append((box.y1-text_point[1])/direction[1])
+    elif direction[1]<0: distances.append((box.y0-text_point[1])/direction[1])
+    edge_distance=min((d for d in distances if d>=0),default=0.0)
+    return add(text_point,mul(direction,edge_distance+gap))
+
+
 def _place_labels(scene: Scene,specs: list[LabelSpec],style: Style,options: RenderOptions) -> None:
     if not specs:return
-    static=scene.occupied(); candidate_sets=[_label_candidates(s,scene.scale,style) for s in specs]
+    static=scene.occupied(style.text_size); candidate_sets=[_label_candidates(s,scene.scale,style) for s in specs]
     selected=[0]*len(specs)
     if options.avoid_label_collisions:
         def score(i: int,j: int,current: list[int]) -> float:
@@ -287,8 +342,10 @@ def layout_scene(diagram: Diagram, *, style: Style, options: RenderOptions) -> S
             for a,b in _clip_segment(e.start,e.end,hinge_circles): g.add(Line(a,b,paint))
             if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.start,e.end,.5),mul(normal((e.end[0]-e.start[0],e.end[1]-e.start[1])),scale*style.label_scale),e.label_position,e.label_offset,paint.color,paint.opacity))
         elif isinstance(e,ArcMember):
-            angles=[e.start_angle+(e.end_angle-e.start_angle)*i/32 for i in range(33)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.ink,width=style.beam_width if e.kind=="beam" else style.bar_width,dash=style.beam_dash); g.add(Polyline(pts,paint))
-            if e.label: labels.append(LabelSpec(g,e.label,pts[len(pts)//2],(0,scale*.6),"auto",None,paint.color,paint.opacity))
+            paint=_paint(style,override,color=style.ink,width=style.beam_width if e.kind=="beam" else style.bar_width,dash=style.beam_dash); g.add(Arc(e.center,e.radius,e.start_angle,e.end_angle,paint))
+            if e.label:
+                midpoint=_arc_point(e.center,e.radius,(e.start_angle+e.end_angle)/2); radial=unit((midpoint[0]-e.center[0],midpoint[1]-e.center[1]))
+                labels.append(LabelSpec(g,e.label,midpoint,mul(radial,scale*.6),"auto",None,paint.color,paint.opacity))
         elif isinstance(e,Support):
             base,direction=_support(g,e,scale,style,options.background)
             if e.label: labels.append(LabelSpec(g,e.label,base,mul(direction,scale*3.2),e.label_position,e.label_offset,(override.color if override and override.color else style.ink),1.0 if not override or override.opacity is None else override.opacity))
@@ -301,22 +358,24 @@ def layout_scene(diagram: Diagram, *, style: Style, options: RenderOptions) -> S
             for i in range(count):
                 f=i/(count-1); base=interpolate(e.start,e.end,f); h=h0+(h1-h0)*f
                 if h>1e-12: _arrow(g,add(base,mul(direction,-h)),mul(direction,h),paint=paint,preferred_head=scale*style.arrow_head_scale*.92)
-            if e.label: labels.append(LabelSpec(g,e.label,interpolate(top_a,top_b,.5),mul(normal(direction),scale*.45),e.label_position,e.label_offset,color,paint.opacity))
+            if e.label: labels.append(LabelSpec(g,e.label,interpolate(top_a,top_b,.5),mul(direction,-scale*.45),e.label_position,e.label_offset,style.load_label or color,paint.opacity))
         elif isinstance(e,PointLoad):
             color=(override.color if override and override.color else (e.color or style.load)); paint=_paint(style,override,color=color,width=style.force_width); _arrow(g,e.point,e.vector,paint=paint,preferred_head=scale*style.arrow_head_scale)
-            if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.point,add(e.point,e.vector),.53),mul(normal(e.vector),scale*.48),e.label_position,e.label_offset,color,paint.opacity))
+            if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.point,add(e.point,e.vector),.53),mul(normal(e.vector),scale*.48),e.label_position,e.label_offset,style.load_label or color,paint.opacity))
         elif isinstance(e,Reaction):
             color=(override.color if override and override.color else (e.color or style.reaction)); paint=_paint(style,override,color=color,width=style.force_width); _arrow(g,e.point,e.vector,paint=paint,preferred_head=scale*style.arrow_head_scale)
-            if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.point,add(e.point,e.vector),.53),mul(normal(e.vector),scale*.48),e.label_position,e.label_offset,color,paint.opacity))
+            if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.point,add(e.point,e.vector),.53),mul(normal(e.vector),scale*.48),e.label_position,e.label_offset,style.reaction_label or color,paint.opacity))
         elif isinstance(e,Moment):
-            radius=e.radius or scale*1.05; color=(override.color if override and override.color else (e.color or style.load)); paint=_paint(style,override,color=color,width=style.force_width); start_a,end_a=((315,35) if e.clockwise else (35,315)); angles=[start_a+(end_a-start_a)*i/24 for i in range(25)]; pts=tuple((e.point[0]+radius*cos(a*pi/180),e.point[1]+radius*sin(a*pi/180)) for a in angles); g.add(Polyline(pts,paint)); theta=end_a*pi/180; direction=(sin(theta),-cos(theta)) if e.clockwise else (-sin(theta),cos(theta)); _arrow(g,add(pts[-1],mul(direction,-scale*.55)),mul(direction,scale*.55),paint=paint,preferred_head=scale*style.arrow_head_scale*.92)
-            if e.label: labels.append(LabelSpec(g,e.label,e.point,(radius+scale*.45,radius*.35),e.label_position,e.label_offset,color,paint.opacity))
+            radius=e.radius or scale*1.05; color=(override.color if override and override.color else (e.color or style.load)); paint=_paint(style,override,color=color,width=style.force_width); start_a,end_a=((315,35) if e.clockwise else (35,315)); g.add(Arc(e.point,radius,start_a,end_a,paint)); theta=end_a*pi/180; direction_sign=-1 if e.clockwise else 1; tip=(e.point[0]+radius*cos(theta),e.point[1]+radius*sin(theta)); tangent=(-sin(theta)*direction_sign,cos(theta)*direction_sign); left,right=arrow_head(tip,tangent,min(scale*style.arrow_head_scale*.92,radius*.35)); g.add(Polygon((tip,left,right),Paint(paint.color,max(paint.width*.7,.1),fill=paint.color,opacity=paint.opacity)))
+            if e.label: labels.append(LabelSpec(g,e.label,e.point,(radius+scale*.45,radius*.35),e.label_position,e.label_offset,style.load_label or color,paint.opacity))
         elif isinstance(e,Dimension):
             nv=normal((e.end[0]-e.start[0],e.end[1]-e.start[1])); start=add(e.start,mul(nv,e.offset)); end=add(e.end,mul(nv,e.offset)); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Line(start,end,paint))
             sign=1 if e.offset>=0 else -1
             if e.extension_lines and abs(e.offset)>1e-12:
+                gap=e.extension_gap if e.extension_gap is not None else scale*.40
+                overrun=e.extension_overrun if e.extension_overrun is not None else scale*.25
                 for original,dimpt in ((e.start,start),(e.end,end)):
-                    a=add(original,mul(nv,e.extension_gap*sign)); b=add(dimpt,mul(nv,e.extension_overrun*sign)); g.add(Line(a,b,paint))
+                    a=add(original,mul(nv,gap*sign)); b=add(dimpt,mul(nv,overrun*sign)); g.add(Line(a,b,paint))
             tick=scale*.22
             for point in (start,end):
                 if e.endpoint_style=="tick": g.add(Line(add(point,mul(nv,-tick)),add(point,mul(nv,tick)),paint))
@@ -324,20 +383,25 @@ def layout_scene(diagram: Diagram, *, style: Style, options: RenderOptions) -> S
                     d=unit((e.end[0]-e.start[0],e.end[1]-e.start[1])); sl=unit((d[0]+nv[0],d[1]+nv[1])); g.add(Line(add(point,mul(sl,-tick)),add(point,mul(sl,tick)),paint))
                 elif e.endpoint_style=="dot": g.add(Circle(point,tick*.45,Paint(paint.color,paint.width,fill=paint.color,opacity=paint.opacity)))
             if e.endpoint_style=="arrow":
-                d=(end[0]-start[0],end[1]-start[1]); _arrow(g,add(start,mul(unit(d),scale*.5)),mul(unit(d),-scale*.5),paint=paint,preferred_head=scale*.16); _arrow(g,add(end,mul(unit(d),-scale*.5)),mul(unit(d),scale*.5),paint=paint,preferred_head=scale*.16)
+                d=unit((end[0]-start[0],end[1]-start[1])); head=min(scale*.24,hypot(end[0]-start[0],end[1]-start[1])*.1)
+                left,right=arrow_head(start,d,head); g.add(Polygon((start,left,right),Paint(paint.color,paint.width*.7,fill=paint.color,opacity=paint.opacity)))
+                left,right=arrow_head(end,mul(d,-1),head); g.add(Polygon((end,left,right),Paint(paint.color,paint.width*.7,fill=paint.color,opacity=paint.opacity)))
             labels.append(LabelSpec(g,e.label,interpolate(start,end,.5),mul(nv,scale*.38),e.label_position,e.label_offset,paint.color,paint.opacity))
         elif isinstance(e,AngleDimension):
             start_angle,end_angle=e.start_angle,e.end_angle
             if e.clockwise and end_angle>start_angle: end_angle-=360
             if not e.clockwise and end_angle<start_angle: end_angle+=360
-            angles=[start_angle+(end_angle-start_angle)*i/28 for i in range(29)]; pts=tuple((e.center[0]+e.radius*cos(a*pi/180),e.center[1]+e.radius*sin(a*pi/180)) for a in angles); paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Polyline(pts,paint)); mid=(start_angle+end_angle)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),"center",None,paint.color,paint.opacity))
+            paint=_paint(style,override,color=style.dimension,width=1.0,dash=style.dimension_dash); g.add(Arc(e.center,e.radius,start_angle,end_angle,paint)); sign=1 if end_angle>=start_angle else -1; start=_arc_point(e.center,e.radius,start_angle); end=_arc_point(e.center,e.radius,end_angle); g.add(Line(e.center,start,paint)); g.add(Line(e.center,end,paint)); head=min(scale*.24,e.radius*.12)
+            for tip,angle,direction_sign in ((start,start_angle,sign),(end,end_angle,-sign)):
+                theta=angle*pi/180; tangent=(-sin(theta)*direction_sign,cos(theta)*direction_sign); left,right=arrow_head(tip,tangent,head); g.add(Polygon((tip,left,right),Paint(paint.color,paint.width*.7,fill=paint.color,opacity=paint.opacity)))
+            mid=(start_angle+end_angle)/2; labels.append(LabelSpec(g,e.label,(e.center[0]+(e.radius+scale*.35)*cos(mid*pi/180),e.center[1]+(e.radius+scale*.35)*sin(mid*pi/180)),(0,0),"center",None,paint.color,paint.opacity))
         elif isinstance(e,SemanticText):
             p=_paint(style,override,color=style.ink,width=1.0); g.add(_text_command(e.point,e.value,color=p.color,style=style,scale=scale,align=e.align,valign=e.valign,opacity=p.opacity))
         elif isinstance(e,Spring):
             v=(e.end[0]-e.start[0],e.end[1]-e.start[1]); p=_paint(style,override,color=style.ink,width=1.3); g.add(Polyline(tuple(spring_points(e.start,v,length(v),scale*.32)),p));
             if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.start,e.end,.5),mul(normal(v),scale*.55),"auto",None,p.color,p.opacity))
         elif isinstance(e,Link):
-            v=(e.end[0]-e.start[0],e.end[1]-e.start[1]); p=_paint(style,override,color=style.ink,width=style.bar_width); g.add(Line(e.start,e.end,p)); r=scale*.18; g.add(Circle(e.start,r,Paint(p.color,1.1,fill=options.background,opacity=p.opacity))); g.add(Circle(e.end,r,Paint(p.color,1.1,fill=options.background,opacity=p.opacity)))
+            v=(e.end[0]-e.start[0],e.end[1]-e.start[1]); p=_paint(style,override,color=style.ink,width=style.bar_width); g.add(Line(e.start,e.end,p)); r=scale*.26; g.add(Circle(e.start,r,Paint(p.color,1.1,fill=options.background,opacity=p.opacity))); g.add(Circle(e.end,r,Paint(p.color,1.1,fill=options.background,opacity=p.opacity)))
             if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.start,e.end,.5),mul(normal(v),scale*.5),"auto",None,p.color,p.opacity))
         elif isinstance(e,CoordinateAxes):
             p=_paint(style,override,color=style.dimension,width=1.0); _arrow(g,e.origin,e.x_vector,paint=p,preferred_head=scale*.22); _arrow(g,e.origin,e.y_vector,paint=p,preferred_head=scale*.22); x_end=add(e.origin,e.x_vector); y_end=add(e.origin,e.y_vector); g.add(_text_command(add(x_end,mul(unit(e.x_vector),scale*.18)),e.x_label,color=p.color,style=style,scale=scale,valign="center",opacity=p.opacity)); g.add(_text_command(add(y_end,mul(unit(e.y_vector),scale*.18)),e.y_label,color=p.color,style=style,scale=scale,opacity=p.opacity))
@@ -345,7 +409,7 @@ def layout_scene(diagram: Diagram, *, style: Style, options: RenderOptions) -> S
             d=unit(e.direction); n=normal(d); p=_paint(style,override,color=style.dimension,width=1.2); a=add(e.point,mul(n,-scale*.8)); b=add(e.point,mul(n,scale*.8)); g.add(Line(a,b,p)); _arrow(g,add(a,mul(d,-scale*.35)),mul(d,scale*.35),paint=p,preferred_head=scale*.14); _arrow(g,add(b,mul(d,-scale*.35)),mul(d,scale*.35),paint=p,preferred_head=scale*.14)
             if e.label: labels.append(LabelSpec(g,e.label,e.point,mul(d,scale*.6),"auto",None,p.color,p.opacity))
         elif isinstance(e,Leader):
-            p=_paint(style,override,color=style.dimension,width=1.0); v=(e.target[0]-e.text_point[0],e.target[1]-e.text_point[1]); _arrow(g,e.text_point,v,paint=p,preferred_head=scale*.18); g.add(_text_command(e.text_point,e.text,color=p.color,style=style,scale=scale,align="left",valign="bottom",opacity=p.opacity))
+            p=_paint(style,override,color=style.dimension,width=1.0); text_command=_text_command(e.text_point,e.text,color=p.color,style=style,scale=scale,align="left",valign="bottom",opacity=p.opacity); edge=_leader_edge(e.target,e.text_point,text_command.bounds_box,scale*.16); _arrow(g,edge,(e.target[0]-edge[0],e.target[1]-edge[1]),paint=p,preferred_head=scale*.18); g.add(text_command)
         elif isinstance(e,Displacement):
             p=_paint(style,override,color=style.reaction,width=style.force_width); _arrow(g,e.point,e.vector,paint=p,preferred_head=scale*style.arrow_head_scale); end=add(e.point,e.vector); n=normal(e.vector); g.add(Line(add(end,mul(n,-scale*.22)),add(end,mul(n,scale*.22)),p))
             if e.label: labels.append(LabelSpec(g,e.label,interpolate(e.point,end,.55),mul(n,scale*.45),"auto",None,p.color,p.opacity))

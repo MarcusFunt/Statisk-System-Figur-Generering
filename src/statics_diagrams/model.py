@@ -167,8 +167,8 @@ class Dimension:
     label_offset: Vector | None = None
     extension_lines: bool = True
     endpoint_style: EndpointStyle = "tick"
-    extension_gap: float = 0.08
-    extension_overrun: float = 0.12
+    extension_gap: float | None = None
+    extension_overrun: float | None = None
     style: ElementStyle | None = None
     css_class: str | None = None
     z_index: int = 0
@@ -442,18 +442,21 @@ class Diagram:
 
     def dimension(self, start: Point, end: Point, label: str, *, offset: float = 0.0,
                   label_position: LabelPosition = "auto", label_offset: Vector | None = None,
-                  extension_lines: bool = True, endpoint_style: EndpointStyle = "tick", extension_gap: float = 0.08,
-                  extension_overrun: float = 0.12, style: ElementStyle | None = None, css_class: str | None = None,
+                  extension_lines: bool = True, endpoint_style: EndpointStyle = "tick", extension_gap: float | None = None,
+                  extension_overrun: float | None = None, style: ElementStyle | None = None, css_class: str | None = None,
                   z_index: int = 0) -> Diagram:
         start = finite_point("start", start); end = finite_point("end", end)
         if start == end: raise ValueError("A dimension needs two distinct points.")
-        offset = finite_scalar("offset", offset); extension_gap = finite_scalar("extension_gap", extension_gap); extension_overrun = finite_scalar("extension_overrun", extension_overrun)
-        if extension_gap < 0 or extension_overrun < 0: raise ValueError("extension gap/overrun cannot be negative.")
+        offset = finite_scalar("offset", offset)
+        if extension_gap is not None: extension_gap = finite_scalar("extension_gap", extension_gap)
+        if extension_overrun is not None: extension_overrun = finite_scalar("extension_overrun", extension_overrun)
+        if (extension_gap is not None and extension_gap < 0) or (extension_overrun is not None and extension_overrun < 0): raise ValueError("extension gap/overrun cannot be negative.")
         if endpoint_style not in _ENDPOINT_STYLES: raise ValueError(f"endpoint_style must be one of {sorted(_ENDPOINT_STYLES)}.")
         lp, lo, cc, z = self._common(label_position, label_offset, css_class, z_index)
         t = self._t(); sf = hypot(*t.vector((1,0)))
         self.elements.append(Dimension(t.point(start), t.point(end), label, offset*sf, lp, lo, extension_lines, endpoint_style,
-                                       extension_gap*sf, extension_overrun*sf, style, cc, z))
+                                       None if extension_gap is None else extension_gap*sf,
+                                       None if extension_overrun is None else extension_overrun*sf, style, cc, z))
         return self
 
     def angle_dimension(self, center: Point, start_angle: float, end_angle: float, radius: float, label: str, *, clockwise: bool = False,
@@ -503,7 +506,10 @@ class Diagram:
 
     def leader(self, target: Point, text_point: Point, text: str, *, style: ElementStyle | None=None,
                css_class: str | None=None, z_index: int=45) -> Diagram:
-        self.elements.append(Leader(self._t().point(finite_point("target",target)), self._t().point(finite_point("text_point",text_point)), text,
+        target=finite_point("target",target); text_point=finite_point("text_point",text_point)
+        if target == text_point:
+            raise ValueError("A leader needs distinct target and text points.")
+        self.elements.append(Leader(self._t().point(target), self._t().point(text_point), text,
                                     style, _css_class(css_class), _z(z_index)))
         return self
 
@@ -534,9 +540,16 @@ class Diagram:
             if isinstance(e, (Beam, Spring, Link, Dimension, DistributedLoad)):
                 points.extend((e.start, e.end))
             elif isinstance(e, CoordinateAxes):
-                points.append(e.origin)
-            elif isinstance(e, (Support, Hinge, Moment, Text, SectionMarker, Displacement)):
+                points.extend((e.origin, add(e.origin, e.x_vector), add(e.origin, e.y_vector)))
+            elif isinstance(e, (Support, Hinge, Text)):
                 points.append(e.point)
+            elif isinstance(e, Moment):
+                points.extend(((e.point[0] - (e.radius or 0.0), e.point[1] - (e.radius or 0.0)),
+                               (e.point[0] + (e.radius or 0.0), e.point[1] + (e.radius or 0.0))))
+            elif isinstance(e, SectionMarker):
+                points.extend((e.point, add(e.point, e.direction)))
+            elif isinstance(e, Displacement):
+                points.extend((e.point, add(e.point, e.vector)))
             elif isinstance(e, (PointLoad, Reaction)):
                 points.extend((e.point, add(e.point, e.vector)))
             elif isinstance(e, Leader): points.extend((e.target, e.text_point))
@@ -574,7 +587,11 @@ def _transform_element(e: DiagramElement, t: Transform, z_offset: int) -> Diagra
     if isinstance(e, Reaction): return replace(e, point=t.point(e.point), vector=t.vector(e.vector), z_index=z)
     if isinstance(e, Dimension):
         sf=hypot(*t.vector((1,0)))
-        return replace(e,start=t.point(e.start),end=t.point(e.end),offset=e.offset*sf,label_offset=None if e.label_offset is None else t.vector(e.label_offset),z_index=z)
+        return replace(e,start=t.point(e.start),end=t.point(e.end),offset=e.offset*sf,
+                       label_offset=None if e.label_offset is None else t.vector(e.label_offset),
+                       extension_gap=None if e.extension_gap is None else e.extension_gap*sf,
+                       extension_overrun=None if e.extension_overrun is None else e.extension_overrun*sf,
+                       z_index=z)
     if isinstance(e, AngleDimension):
         sf=hypot(*t.vector((1,0))); rot=atan2(t.c,t.a)*180/pi
         return replace(e,center=t.point(e.center),radius=e.radius*sf,start_angle=e.start_angle+rot,end_angle=e.end_angle+rot,z_index=z)

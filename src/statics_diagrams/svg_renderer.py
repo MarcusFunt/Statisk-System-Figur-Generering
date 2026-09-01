@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from math import cos, pi, sin
 from pathlib import Path
 
-from .layout import Circle, Line, Polygon, Polyline, Scene, Text, figure_size, layout_scene
+from .layout import Arc, Circle, Line, Polygon, Polyline, Scene, Text, figure_size, layout_scene
 from .model import Diagram
 from .options import RenderOptions
 from .style import DEFAULT_STYLE, Style
@@ -50,6 +51,23 @@ def _paint_attrs(paint,canvas: _Canvas,*,include_fill: bool=False) -> str:
     return attrs
 
 
+def _arc_svg(command: Arc,canvas: _Canvas) -> str:
+    start=(command.center[0]+command.radius*cos(command.start_angle*pi/180),command.center[1]+command.radius*sin(command.start_angle*pi/180))
+    end=(command.center[0]+command.radius*cos(command.end_angle*pi/180),command.center[1]+command.radius*sin(command.end_angle*pi/180))
+    ax,ay=canvas.point(start); bx,by=canvas.point(end); radius=command.radius*canvas.ppu
+    delta=command.end_angle-command.start_angle
+    if abs(delta)>=360:
+        midpoint_angle=command.start_angle+delta/2
+        midpoint=(command.center[0]+command.radius*cos(midpoint_angle*pi/180),command.center[1]+command.radius*sin(midpoint_angle*pi/180))
+        mx,my=canvas.point(midpoint)
+        sweep=0 if delta>0 else 1
+        d=f'M {_f(ax)} {_f(ay)} A {_f(radius)} {_f(radius)} 0 1 {sweep} {_f(mx)} {_f(my)} A {_f(radius)} {_f(radius)} 0 1 {sweep} {_f(bx)} {_f(by)}'
+    else:
+        large=1 if abs(delta)>180 else 0; sweep=0 if delta>0 else 1
+        d=f'M {_f(ax)} {_f(ay)} A {_f(radius)} {_f(radius)} 0 {large} {sweep} {_f(bx)} {_f(by)}'
+    return f'<path d="{d}" fill="none" {_paint_attrs(command.paint,canvas)} stroke-linecap="round"/>'
+
+
 def _command_svg(command,canvas: _Canvas) -> str:
     if isinstance(command,Line):
         ax,ay=canvas.point(command.start); bx,by=canvas.point(command.end)
@@ -60,9 +78,12 @@ def _command_svg(command,canvas: _Canvas) -> str:
         pts=" ".join(f"{_f(x)} {_f(y)}" for x,y in map(canvas.point,command.points)); return f'<polygon points="{pts}" {_paint_attrs(command.paint,canvas,include_fill=True)} stroke-linejoin="round"/>'
     if isinstance(command,Circle):
         x,y=canvas.point(command.center); r=command.radius*canvas.ppu; return f'<circle cx="{_f(x)}" cy="{_f(y)}" r="{_f(r)}" {_paint_attrs(command.paint,canvas,include_fill=True)}/>'
+    if isinstance(command,Arc):
+        return _arc_svg(command,canvas)
     if isinstance(command,Text):
         x,_=canvas.point(command.point); _,top_y=canvas.point((command.point[0],command.bounds_box.y1)); anchor={"left":"start","center":"middle","right":"end"}[command.align]; lines=command.value.split("\n"); size=canvas.width_px(command.size); line_step=size*command.line_spacing
-        attrs=f'x="{_f(x)}" y="{_f(top_y)}" fill="{_attr(command.color)}" opacity="{_f(command.opacity)}" font-family="{_attr(command.font_family)}" font-size="{_f(size)}" text-anchor="{anchor}" dominant-baseline="hanging"'
+        family=", ".join((command.font_family,*command.font_fallback))
+        attrs=f'x="{_f(x)}" y="{_f(top_y)}" fill="{_attr(command.color)}" opacity="{_f(command.opacity)}" font-family="{_attr(family)}" font-size="{_f(size)}" text-anchor="{anchor}" dominant-baseline="hanging"'
         if len(lines)==1:return f'<text {attrs}>{escape(lines[0])}</text>'
         spans=[]
         for i,line in enumerate(lines): spans.append(f'<tspan x="{_f(x)}" dy="{_f(0 if i==0 else line_step)}">{escape(line)}</tspan>')

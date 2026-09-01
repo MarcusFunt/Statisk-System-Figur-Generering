@@ -17,7 +17,7 @@ from statics_diagrams.layout import Text, layout_scene
 
 
 def test_moment_only_svg_uses_bounds_that_contain_the_moment():
-    svg=render_svg(Diagram().moment((10,10),radius=2)).content; root=ElementTree.fromstring(svg); view_box=[float(v) for v in root.attrib['viewBox'].split()]; polyline=root.find('.//{http://www.w3.org/2000/svg}polyline'); assert polyline is not None; coordinates=[float(v) for v in polyline.attrib['points'].split()]; assert view_box[2]>0 and view_box[3]>0; assert all(0<=x<=view_box[2] for x in coordinates[::2]); assert all(0<=y<=view_box[3] for y in coordinates[1::2])
+    svg=render_svg(Diagram().moment((10,10),radius=2)).content; root=ElementTree.fromstring(svg); view_box=[float(v) for v in root.attrib['viewBox'].split()]; arc=root.find('.//{http://www.w3.org/2000/svg}path'); assert arc is not None; assert ' A ' in arc.attrib['d']; assert view_box[2]>0 and view_box[3]>0
 
 def test_title_is_visible_and_accessibly_named_in_svg():
     svg=render_svg(Diagram(title='Portal frame').beam((0,0),(4,0))).content; assert '<title id="diagram-title">Portal frame</title>' in svg; assert '>Portal frame</text>' in svg

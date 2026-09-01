@@ -1,13 +1,14 @@
 """Matplotlib output for the shared statics-diagrams scene."""
 from __future__ import annotations
 
-from .layout import Circle, Line, Polygon, Polyline, Text, figure_size, layout_scene
+from .layout import Arc, Circle, Line, Polygon, Polyline, Text, figure_size, layout_scene
 from .model import Diagram
 from .options import RenderOptions
 from .style import DEFAULT_STYLE, Style
 
 
 def _draw_command(ax,command) -> None:
+    from matplotlib.patches import Arc as MArc
     from matplotlib.patches import Circle as MCircle
     from matplotlib.patches import Polygon as MPolygon
     if isinstance(command,Line):
@@ -20,10 +21,14 @@ def _draw_command(ax,command) -> None:
         ax.add_patch(MPolygon(command.points,closed=True,fill=command.paint.fill is not None,facecolor=command.paint.fill or "none",edgecolor=command.paint.color,linewidth=command.paint.width,alpha=command.paint.opacity,joinstyle="round"))
     elif isinstance(command,Circle):
         ax.add_patch(MCircle(command.center,command.radius,facecolor=command.paint.fill or "none",edgecolor=command.paint.color,linewidth=command.paint.width,alpha=command.paint.opacity))
+    elif isinstance(command,Arc):
+        patch=MArc(command.center,2*command.radius,2*command.radius,theta1=command.start_angle,theta2=command.end_angle,color=command.paint.color,linewidth=command.paint.width,alpha=command.paint.opacity)
+        if command.paint.dash: patch.set_linestyle((0,command.paint.dash))
+        ax.add_patch(patch)
     elif isinstance(command,Text):
         lines=command.value.split("\n"); n=len(lines); top=command.bounds_box.y1; step=command.bounds_box.height/max(n,1)
         for i,line in enumerate(lines):
-            ax.text(command.point[0],top-i*step,line,color=command.color,fontsize=command.size,ha=command.align,va="top",family=command.font_family,alpha=command.opacity,parse_math=False)
+            ax.text(command.point[0],top-i*step,line,color=command.color,fontsize=command.size,ha=command.align,va="top",family=(command.font_family,*command.font_fallback),alpha=command.opacity,parse_math=False)
     else: raise TypeError(type(command))
 
 

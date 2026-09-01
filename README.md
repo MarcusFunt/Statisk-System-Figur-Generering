@@ -81,7 +81,7 @@ Built-in themes are `DEFAULT_STYLE`, `MONOCHROME_STYLE`, `PRINT_STYLE`, and `COL
 
 Automatic labels use scored collision-aware candidate placement. Explicit `label_position=` or `label_offset=` remains authoritative. Multiline text using `\n` is supported by both backends.
 
-Text is **literal by default**, including dollar signs. This avoids Matplotlib MathText producing output that standalone SVG cannot match. Prefer Unicode (`σ`, `Δ`, `Aᵧ`) for engineering notation until a shared explicit math-markup mode is added.
+Text is **literal by default**, including dollar signs. This avoids Matplotlib MathText producing output that standalone SVG cannot match. Prefer Unicode (`σ`, `Δ`, `Aᵧ`) for engineering notation until a shared explicit math-markup mode is added. SVG text includes the configured `Style.font_family` followed by its `font_fallback` families so editable output remains usable on systems without the primary font.
 
 ## SVG semantics
 

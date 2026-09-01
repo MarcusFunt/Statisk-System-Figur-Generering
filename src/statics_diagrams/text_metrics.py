@@ -23,14 +23,15 @@ def _fallback_line_width(text: str, size: float) -> float:
     return units * size
 
 
-def measure_text(text: str, font_family: str, size: float, line_spacing: float = 1.2) -> TextMetrics:
+def measure_text(text: str, font_family: str, size: float, line_spacing: float = 1.2,
+                 font_fallback: tuple[str, ...] = ()) -> TextMetrics:
     lines = text.split("\n") or [""]
     widths: list[float] = []
     line_height = size * 1.05
     try:
         from matplotlib.font_manager import FontProperties
         from matplotlib.textpath import TextPath
-        prop = FontProperties(family=font_family, size=size)
+        prop = FontProperties(family=(font_family, *font_fallback), size=size)
         for line in lines:
             if not line:
                 widths.append(0.0)

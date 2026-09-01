@@ -57,6 +57,9 @@ class Style:
     beam_dash: tuple[float, ...] | None = None
     load_dash: tuple[float, ...] | None = None
     dimension_dash: tuple[float, ...] | None = None
+    font_fallback: tuple[str, ...] = ("Arial", "sans-serif")
+    load_label: str | None = "#9f3724"
+    reaction_label: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -69,12 +72,35 @@ class Style:
         _dash("dimension_dash", self.dimension_dash)
         if not self.font_family:
             raise ValueError("font_family cannot be empty.")
+        if any(not fallback for fallback in self.font_fallback):
+            raise ValueError("font_fallback entries cannot be empty.")
 
 
 DEFAULT_STYLE = Style()
-MONOCHROME_STYLE = replace(DEFAULT_STYLE, load="#17212b", reaction="#17212b", ground="#4d5760")
-PRINT_STYLE = replace(DEFAULT_STYLE, ink="#111111", load="#333333", reaction="#555555", ground="#777777")
-COLORBLIND_STYLE = replace(DEFAULT_STYLE, load="#d55e00", reaction="#0072b2", ground="#6c757d")
+MONOCHROME_STYLE = replace(
+    DEFAULT_STYLE,
+    load="#17212b",
+    reaction="#17212b",
+    ground="#4d5760",
+    dimension="#17212b",
+    load_label="#17212b",
+)
+PRINT_STYLE = replace(
+    DEFAULT_STYLE,
+    ink="#111111",
+    load="#333333",
+    reaction="#555555",
+    ground="#777777",
+    dimension="#444444",
+    load_label="#333333",
+)
+COLORBLIND_STYLE = replace(
+    DEFAULT_STYLE,
+    load="#d55e00",
+    reaction="#0072b2",
+    ground="#6c757d",
+    load_label="#9b3f00",
+)
 
 THEMES: dict[str, Style] = {
     "default": DEFAULT_STYLE,

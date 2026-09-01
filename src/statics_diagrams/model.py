@@ -9,6 +9,7 @@ from typing import Literal
 
 Point = tuple[float, float]
 Vector = tuple[float, float]
+LabelPosition = Literal["auto", "above", "below", "left", "right", "center"]
 
 
 class SupportKind(str, Enum):
@@ -24,6 +25,8 @@ class Beam:
     end: Point
     kind: Literal["beam", "bar"] = "beam"
     label: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,8 @@ class Support:
     angle: float = 0.0
     fixed_side: Literal["left", "right", "top", "bottom"] = "bottom"
     label: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +45,8 @@ class Hinge:
     point: Point
     radius: float | None = None
     label: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +55,8 @@ class PointLoad:
     vector: Vector
     label: str | None = None
     color: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +68,8 @@ class DistributedLoad:
     count: int = 7
     offset: float | None = None
     color: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +79,8 @@ class Moment:
     label: str | None = None
     radius: float | None = None
     color: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +89,8 @@ class Reaction:
     vector: Vector
     label: str | None = None
     color: str | None = None
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +99,8 @@ class Dimension:
     end: Point
     label: str
     offset: float = 0.0
+    label_position: LabelPosition = "auto"
+    label_offset: Vector | None = None
 
 
 @dataclass(frozen=True)
@@ -122,8 +139,10 @@ class Diagram:
         *,
         kind: Literal["beam", "bar"] = "beam",
         label: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.beams.append(Beam(start, end, kind, label))
+        self.beams.append(Beam(start, end, kind, label, label_position, label_offset))
         return self
 
     def support(
@@ -134,14 +153,24 @@ class Diagram:
         angle: float = 0.0,
         fixed_side: Literal["left", "right", "top", "bottom"] = "bottom",
         label: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.supports.append(Support(point, SupportKind(kind), angle, fixed_side, label))
+        self.supports.append(
+            Support(point, SupportKind(kind), angle, fixed_side, label, label_position, label_offset)
+        )
         return self
 
     def hinge(
-        self, point: Point, *, radius: float | None = None, label: str | None = None
+        self,
+        point: Point,
+        *,
+        radius: float | None = None,
+        label: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.hinges.append(Hinge(point, radius, label))
+        self.hinges.append(Hinge(point, radius, label, label_position, label_offset))
         return self
 
     def point_load(
@@ -151,9 +180,43 @@ class Diagram:
         *,
         label: str | None = None,
         color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.point_loads.append(PointLoad(point, vector, label, color))
+        unit(vector)
+        self.point_loads.append(PointLoad(point, vector, label, color, label_position, label_offset))
         return self
+
+    def force(
+        self,
+        *,
+        at: Point,
+        direction: Vector,
+        length: float,
+        label: str | None = None,
+        color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
+    ) -> Diagram:
+        """Add a point force whose arrowhead lands at its application point.
+
+        ``direction`` denotes the physical arrow direction and ``length`` is a
+        drawing length. This is the semantic alternative to ``point_load``,
+        which deliberately remains a low-level tail-plus-vector primitive.
+        """
+        if length <= 0:
+            raise ValueError("length must be positive.")
+        direction_unit = unit(direction)
+        vector = mul(direction_unit, length)
+        start = add(at, mul(vector, -1))
+        return self.point_load(
+            start,
+            vector,
+            label=label,
+            color=color,
+            label_position=label_position,
+            label_offset=label_offset,
+        )
 
     def distributed_load(
         self,
@@ -165,13 +228,44 @@ class Diagram:
         count: int = 7,
         offset: float | None = None,
         color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
         if count < 2:
             raise ValueError("A distributed load needs at least two arrows.")
-        self.distributed_loads.append(
-            DistributedLoad(start, end, direction, label, count, offset, color)
-        )
+        unit(direction)
+        if offset is not None and offset <= 0:
+            raise ValueError("offset must be positive when provided.")
+        self.distributed_loads.append(DistributedLoad(start, end, direction, label, count, offset, color, label_position, label_offset))
         return self
+
+    def udl(
+        self,
+        start: Point,
+        end: Point,
+        *,
+        direction: Vector,
+        height: float,
+        label: str | None = None,
+        count: int = 7,
+        color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
+    ) -> Diagram:
+        """Add a uniformly distributed load with an explicit drawn height."""
+        if height <= 0:
+            raise ValueError("height must be positive.")
+        return self.distributed_load(
+            start,
+            end,
+            direction=direction,
+            label=label,
+            count=count,
+            offset=height,
+            color=color,
+            label_position=label_position,
+            label_offset=label_offset,
+        )
 
     def moment(
         self,
@@ -181,8 +275,12 @@ class Diagram:
         label: str | None = None,
         radius: float | None = None,
         color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.moments.append(Moment(point, clockwise, label, radius, color))
+        if radius is not None and radius <= 0:
+            raise ValueError("radius must be positive when provided.")
+        self.moments.append(Moment(point, clockwise, label, radius, color, label_position, label_offset))
         return self
 
     def reaction(
@@ -192,14 +290,26 @@ class Diagram:
         *,
         label: str | None = None,
         color: str | None = None,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.reactions.append(Reaction(point, vector, label, color))
+        unit(vector)
+        self.reactions.append(Reaction(point, vector, label, color, label_position, label_offset))
         return self
 
     def dimension(
-        self, start: Point, end: Point, label: str, *, offset: float = 0.0
+        self,
+        start: Point,
+        end: Point,
+        label: str,
+        *,
+        offset: float = 0.0,
+        label_position: LabelPosition = "auto",
+        label_offset: Vector | None = None,
     ) -> Diagram:
-        self.dimensions.append(Dimension(start, end, label, offset))
+        if start == end:
+            raise ValueError("A dimension needs two distinct points.")
+        self.dimensions.append(Dimension(start, end, label, offset, label_position, label_offset))
         return self
 
     def text(
@@ -232,6 +342,12 @@ class Diagram:
                     reaction.point[0] + reaction.vector[0],
                     reaction.point[1] + reaction.vector[1],
                 ),
+            ]
+        for moment in self.moments:
+            radius = moment.radius or 0.0
+            points += [
+                (moment.point[0] - radius, moment.point[1] - radius),
+                (moment.point[0] + radius, moment.point[1] + radius),
             ]
         for dimension in self.dimensions:
             points += [dimension.start, dimension.end]

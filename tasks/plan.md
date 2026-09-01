@@ -25,3 +25,10 @@ and a first tagged release.
 - [x] Verify editable installation, tests, linting, gallery generation, and
       wheel construction.
 - [x] Commit the import as the repository's library baseline.
+
+## Completed follow-up: renderer quality revision
+
+- [x] Add a backend-neutral scene layout for bounds, symbols, labels, and titles.
+- [x] Add semantic load helpers, output options, themes, and SVG element groups.
+- [x] Generate and visually inspect five representative PNG/SVG figures.
+- [x] Add regression coverage for the corrected behaviours and headless rendering.

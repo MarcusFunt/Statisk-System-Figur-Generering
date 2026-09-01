@@ -1,196 +1,126 @@
-"""Matplotlib output for :mod:`statics_diagrams`."""
+"""Matplotlib output for the shared statics-diagrams scene."""
 
 from __future__ import annotations
 
-from math import cos, pi, sin
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle as MatplotlibCircle
+from matplotlib.patches import Polygon as MatplotlibPolygon
 
-from matplotlib import pyplot as plt
-from matplotlib.patches import Arc, Circle, FancyArrowPatch, Polygon
-
-from .geometry import interpolate, spring_points, support_axes
-from .model import Diagram, SupportKind, add, mul, normal, unit
+from .layout import Circle, Line, Polygon, Polyline, Text, figure_size, layout_scene
+from .model import Diagram
+from .options import RenderOptions
 from .style import DEFAULT_STYLE, Style
 
 
-def _line(ax, points, *, color, width, **kwargs):
-    xs, ys = zip(*points)
-    return ax.plot(
-        xs,
-        ys,
-        color=color,
-        linewidth=width,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-        **kwargs,
-    )
-
-
-def _text(ax, point, value, *, style: Style, color=None, ha="center", va="bottom"):
-    ax.text(*point, value, color=color or style.ink, fontsize=style.text_size, ha=ha, va=va, family="DejaVu Sans")
-
-
-def _arrow(ax, start, vector, *, color, style: Style, label=None):
-    end = add(start, vector)
-    arrow = FancyArrowPatch(
-        start,
-        end,
-        arrowstyle="-|>",
-        mutation_scale=13,
-        linewidth=style.force_width,
-        color=color,
-        shrinkA=0,
-        shrinkB=0,
-    )
-    ax.add_patch(arrow)
-    if label:
-        midpoint = interpolate(start, end, 0.53)
-        offset = mul(normal(vector), max(0.09, max(abs(vector[0]), abs(vector[1])) * 0.11))
-        _text(ax, add(midpoint, offset), label, style=style, color=color)
-
-
-def _draw_ground(ax, center, tangent, down, width, *, style: Style):
-    a, b = add(center, mul(tangent, -width / 2)), add(center, mul(tangent, width / 2))
-    _line(ax, [a, b], color=style.ground, width=1.2)
-    for ratio in (-0.38, -0.13, 0.13, 0.38):
-        base = add(center, mul(tangent, width * ratio))
-        _line(
-            ax,
-            [base, add(add(base, mul(tangent, -width * 0.10)), mul(down, width * 0.14))],
-            color=style.ground,
-            width=0.9,
+def _draw_command(ax, command) -> None:
+    if isinstance(command, Line):
+        xs, ys = zip(command.start, command.end)
+        line, = ax.plot(
+            xs,
+            ys,
+            color=command.color,
+            linewidth=command.width,
+            linestyle="solid",
+            solid_capstyle="round",
+            solid_joinstyle="round",
         )
-
-
-def _draw_support(ax, support, scale, *, style: Style):
-    point = support.point
-    tangent, down = support_axes(support.angle)
-    height, width = scale * 1.55, scale * 1.75
-    if support.kind is SupportKind.FIXED:
-        direction = {
-            "left": (-1, 0),
-            "right": (1, 0),
-            "top": (0, 1),
-            "bottom": (0, -1),
-        }[support.fixed_side]
-        end = add(point, mul(direction, scale * 0.2))
-        cross = normal(direction)
-        _line(ax, [end, add(end, mul(cross, scale * 2.0))], color=style.ink, width=style.beam_width + 0.9)
-        for marker in (-0.85, -0.45, -0.05, 0.35, 0.75):
-            root = add(end, mul(cross, scale * marker))
-            _line(
-                ax,
-                [root, add(add(root, mul(cross, scale * 0.22)), mul(direction, scale * 0.30))],
-                color=style.ground,
-                width=1.0,
+        if command.dash:
+            line.set_dashes(command.dash)
+        return
+    if isinstance(command, Polyline):
+        xs, ys = zip(*command.points)
+        ax.plot(
+            xs,
+            ys,
+            color=command.color,
+            linewidth=command.width,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+        )
+        return
+    if isinstance(command, Polygon):
+        ax.add_patch(
+            MatplotlibPolygon(
+                command.points,
+                closed=True,
+                fill=command.fill is not None,
+                facecolor=command.fill or "none",
+                edgecolor=command.color,
+                linewidth=command.width,
+                joinstyle="round",
             )
-    else:
-        left = add(add(point, mul(down, height)), mul(tangent, -width / 2))
-        right = add(add(point, mul(down, height)), mul(tangent, width / 2))
-        ground = add(point, mul(down, height))
-        if support.kind is SupportKind.SPRING:
-            points = spring_points(point, down, height * 1.35, width * 0.22)
-            _line(ax, points, color=style.ink, width=1.3)
-            _draw_ground(ax, points[-1], tangent, down, width * 1.25, style=style)
-        else:
-            ax.add_patch(Polygon([point, right, left], closed=True, fill=False, linewidth=1.5, edgecolor=style.ink, joinstyle="round"))
-        if support.kind is SupportKind.ROLLER:
-            radius = scale * 0.28
-            for sign in (-0.28, 0.28):
-                center = add(add(ground, mul(tangent, width * sign)), mul(down, radius))
-                ax.add_patch(Circle(center, radius, fill=False, linewidth=1.25, edgecolor=style.ink))
-            _draw_ground(ax, add(ground, mul(down, radius * 2)), tangent, down, width * 1.35, style=style)
-        elif support.kind is SupportKind.PIN:
-            _draw_ground(ax, ground, tangent, down, width * 1.25, style=style)
-    if support.label:
-        _text(ax, add(point, mul(down, height + scale * 0.8)), support.label, style=style, va="top")
+        )
+        return
+    if isinstance(command, Circle):
+        ax.add_patch(
+            MatplotlibCircle(
+                command.center,
+                command.radius,
+                facecolor=command.fill or "none",
+                edgecolor=command.color,
+                linewidth=command.width,
+            )
+        )
+        return
+    if isinstance(command, Text):
+        ax.text(
+            *command.point,
+            command.value,
+            color=command.color,
+            fontsize=command.size,
+            ha=command.align,
+            va=command.valign,
+            family=command.font_family,
+        )
+        return
+    raise TypeError(f"Unsupported scene command: {type(command)!r}")
 
 
-def _draw_dimension(ax, dimension, scale, *, style: Style):
-    a, b = dimension.start, dimension.end
-    vector = (b[0] - a[0], b[1] - a[1])
-    normal_vector = normal(vector)
-    offset = mul(normal_vector, dimension.offset)
-    a, b = add(a, offset), add(b, offset)
-    _line(ax, [a, b], color=style.dimension, width=1.0)
-    tick = scale * 0.22
-    for point in (a, b):
-        _line(ax, [add(point, mul(normal_vector, -tick)), add(point, mul(normal_vector, tick))], color=style.dimension, width=1.0)
-    midpoint = interpolate(a, b, 0.5)
-    _text(ax, add(midpoint, mul(normal_vector, scale * 0.38)), dimension.label, style=style, color=style.dimension)
-
-
-def render_matplotlib(diagram: Diagram, *, ax=None, style: Style = DEFAULT_STYLE, padding: float = 3.0):
+def render_matplotlib(
+    diagram: Diagram,
+    *,
+    ax=None,
+    style: Style = DEFAULT_STYLE,
+    options: RenderOptions | None = None,
+    padding: float | None = None,
+):
     """Render ``diagram`` and return its Matplotlib figure.
 
-    Pass an existing ``ax`` to place the diagram into a report layout. Otherwise
-    the function creates a transparent, axis-free figure suited to export.
+    Both this backend and :func:`render_svg` consume the same resolved scene,
+    keeping symbols, title placement, bounds, and labels in parity.
     """
+    resolved_options = options or RenderOptions()
+    if padding is not None:
+        resolved_options = RenderOptions(
+            width=resolved_options.width,
+            height=resolved_options.height,
+            dpi=resolved_options.dpi,
+            padding=padding,
+            background=resolved_options.background,
+            avoid_label_collisions=resolved_options.avoid_label_collisions,
+        )
+    scene = layout_scene(diagram, style=style, options=resolved_options)
+    assert scene.bounds is not None
     own_figure = ax is None
     if own_figure:
-        figure, ax = plt.subplots(figsize=(10, 4.5))
+        figure = Figure(figsize=figure_size(scene.bounds, resolved_options), dpi=resolved_options.dpi)
+        FigureCanvasAgg(figure)
+        ax = figure.add_subplot()
     else:
         figure = ax.figure
-    scale = diagram.scale()
-
-    for beam in diagram.beams:
-        width = style.beam_width if beam.kind == "beam" else style.bar_width
-        _line(ax, [beam.start, beam.end], color=style.ink, width=width)
-        if beam.label:
-            midpoint = interpolate(beam.start, beam.end, 0.5)
-            _text(
-                ax,
-                add(midpoint, mul(normal((beam.end[0] - beam.start[0], beam.end[1] - beam.start[1])), scale * 0.62)),
-                beam.label,
-                style=style,
-            )
-    for support in diagram.supports:
-        _draw_support(ax, support, scale, style=style)
-    for hinge in diagram.hinges:
-        radius = hinge.radius or scale * 0.32
-        ax.add_patch(Circle(hinge.point, radius, facecolor="white", edgecolor=style.ink, linewidth=1.35, zorder=5))
-        if hinge.label:
-            _text(ax, add(hinge.point, (0, scale * 0.55)), hinge.label, style=style)
-    for load in diagram.distributed_loads:
-        direction = unit(load.direction)
-        length = load.offset or scale * 3.0
-        color = load.color or style.load
-        top_a, top_b = add(load.start, mul(direction, -length)), add(load.end, mul(direction, -length))
-        _line(ax, [top_a, top_b], color=color, width=1.0)
-        for index in range(load.count):
-            start = interpolate(top_a, top_b, index / (load.count - 1))
-            _arrow(ax, start, mul(direction, length), color=color, style=style)
-        if load.label:
-            _text(ax, add(interpolate(top_a, top_b, 0.5), mul(normal(direction), scale * 0.45)), load.label, style=style, color=color)
-    for load in diagram.point_loads:
-        _arrow(ax, load.point, load.vector, color=load.color or style.load, style=style, label=load.label)
-    for reaction in diagram.reactions:
-        _arrow(ax, reaction.point, reaction.vector, color=reaction.color or style.reaction, style=style, label=reaction.label)
-    for moment in diagram.moments:
-        radius = moment.radius or scale * 1.05
-        color = moment.color or style.load
-        arc = Arc(moment.point, radius * 2, radius * 2, angle=0, theta1=35, theta2=315, linewidth=style.force_width, color=color)
-        ax.add_patch(arc)
-        angle = 315 if moment.clockwise else 35
-        sign = -1 if moment.clockwise else 1
-        theta = angle * pi / 180
-        tip = (moment.point[0] + radius * cos(theta), moment.point[1] + radius * sin(theta))
-        tangent = (-sin(theta) * sign, cos(theta) * sign)
-        _arrow(ax, add(tip, mul(tangent, -scale * 0.55)), mul(tangent, scale * 0.55), color=color, style=style)
-        if moment.label:
-            _text(ax, add(moment.point, (radius + scale * 0.45, radius * 0.35)), moment.label, style=style, color=color)
-    for dimension in diagram.dimensions:
-        _draw_dimension(ax, dimension, scale, style=style)
-    for text in diagram.texts:
-        _text(ax, text.point, text.value, style=style, ha=text.align, va=text.valign)
-
-    x0, x1, y0, y1 = diagram.extent()
-    margin = max(scale * padding, 0.4)
-    ax.set_xlim(x0 - margin, x1 + margin)
-    ax.set_ylim(y0 - margin * 1.25, y1 + margin * 1.25)
+    if resolved_options.background is None:
+        figure.patch.set_alpha(0)
+        ax.set_facecolor("none")
+    else:
+        figure.patch.set_facecolor(resolved_options.background)
+        ax.set_facecolor(resolved_options.background)
+    for command in scene.commands:
+        _draw_command(ax, command)
+    ax.set_xlim(scene.bounds.x0, scene.bounds.x1)
+    ax.set_ylim(scene.bounds.y0, scene.bounds.y1)
     ax.set_aspect("equal", adjustable="box")
     ax.axis("off")
-    if diagram.title:
-        ax.set_title(diagram.title, color=style.ink, fontsize=13, pad=14, weight="semibold")
     if own_figure:
-        figure.tight_layout(pad=0.45)
+        figure.subplots_adjust(left=0, right=1, bottom=0, top=1)
     return figure

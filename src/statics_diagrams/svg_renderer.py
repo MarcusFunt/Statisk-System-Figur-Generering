@@ -16,8 +16,26 @@ def _f(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".")
 
 
+def _xml_string(value: str) -> str:
+    """Return an XML 1.0-safe string, rejecting forbidden code points clearly."""
+    for char in value:
+        codepoint = ord(char)
+        if not (
+            codepoint in {0x9, 0xA, 0xD}
+            or 0x20 <= codepoint <= 0xD7FF
+            or 0xE000 <= codepoint <= 0xFFFD
+            or 0x10000 <= codepoint <= 0x10FFFF
+        ):
+            raise ValueError(f"SVG output does not permit XML 1.0 character U+{codepoint:04X}.")
+    return value
+
+
 def _attr(value: str) -> str:
-    return escape(value, quote=True)
+    return escape(_xml_string(value), quote=True)
+
+
+def _text(value: str) -> str:
+    return escape(_xml_string(value))
 
 
 @dataclass
@@ -84,9 +102,9 @@ def _command_svg(command,canvas: _Canvas) -> str:
         x,_=canvas.point(command.point); _,top_y=canvas.point((command.point[0],command.bounds_box.y1)); anchor={"left":"start","center":"middle","right":"end"}[command.align]; lines=command.value.split("\n"); size=canvas.width_px(command.size); line_step=size*command.line_spacing
         family=", ".join((command.font_family,*command.font_fallback))
         attrs=f'x="{_f(x)}" y="{_f(top_y)}" fill="{_attr(command.color)}" opacity="{_f(command.opacity)}" font-family="{_attr(family)}" font-size="{_f(size)}" text-anchor="{anchor}" dominant-baseline="hanging"'
-        if len(lines)==1:return f'<text {attrs}>{escape(lines[0])}</text>'
+        if len(lines)==1:return f'<text {attrs}>{_text(lines[0])}</text>'
         spans=[]
-        for i,line in enumerate(lines): spans.append(f'<tspan x="{_f(x)}" dy="{_f(0 if i==0 else line_step)}">{escape(line)}</tspan>')
+        for i,line in enumerate(lines): spans.append(f'<tspan x="{_f(x)}" dy="{_f(0 if i==0 else line_step)}">{_text(line)}</tspan>')
         return f'<text {attrs}>{"".join(spans)}</text>'
     raise TypeError(type(command))
 
@@ -102,7 +120,7 @@ def render_svg(diagram: Diagram,*,style: Style=DEFAULT_STYLE,options: RenderOpti
         gid=f"{prefix}{group.element_kind}-{group.element_id}"; cls=f' class="{_attr(group.css_class)}"' if group.css_class else ""
         parts.append(f'<g id="{_attr(gid)}" data-kind="{_attr(group.element_kind)}"{cls}>')
         parts.extend(_command_svg(c,canvas) for c in group.commands); parts.append("</g>")
-    accessible=escape(diagram.title or "Statics diagram"); content="\n".join(parts)
+    accessible=_text(diagram.title or "Statics diagram"); content="\n".join(parts)
     svg=(f'<svg xmlns="http://www.w3.org/2000/svg" width="{_f(canvas.width_in)}in" height="{_f(canvas.height_in)}in" viewBox="0 0 {_f(canvas.width)} {_f(canvas.height)}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="{_attr(title_id)}">'
          f'<title id="{_attr(title_id)}">{accessible}</title>{content}</svg>\n')
     return SVGDocument(svg)

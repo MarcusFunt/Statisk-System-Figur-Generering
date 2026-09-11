@@ -55,6 +55,14 @@ beam = (
 render_svg(beam, options=RenderOptions(width=7, background=None)).save("beam.svg")
 ```
 
+For a complete, editable pitched-frame example matching a 6.00 m span with
+2.50 m and 4.00 m columns:
+
+```bash
+python examples/pitched_frame.py
+python examples/pitched_frame.py --editor  # requires statics-diagrams[app]
+```
+
 For Matplotlib:
 
 ```python

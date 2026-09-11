@@ -1,6 +1,6 @@
 # statics-diagrams
 
-`statics-diagrams` is an **analysis-free** Python library for producing clean statics and strength-of-materials figures. It draws the system you describe; it does not calculate reactions, stiffness, or stresses.
+`statics-diagrams` is a Python library for producing clean statics and strength-of-materials figures. Its dependency-free core draws the system you describe. Optional extras add a 2D structural-analysis backend and an interactive desktop editor.
 
 The library has a dependency-free standalone SVG backend and an optional Matplotlib backend for PNG/PDF/SVG export.
 
@@ -16,6 +16,19 @@ With Matplotlib:
 
 ```bash
 pip install "statics-diagrams[matplotlib]"
+```
+
+With the anaStruct 2D frame/truss analysis backend:
+
+```bash
+pip install "statics-diagrams[analysis]"
+```
+
+With the PySide6 editor and analysis backend:
+
+```bash
+pip install "statics-diagrams[app]"
+python -m statics_diagrams.gui
 ```
 
 Development:
@@ -118,6 +131,35 @@ python -m build
 ```
 
 CI additionally tests the declared Matplotlib 3.7 dependency floor, a no-Matplotlib SVG-only install, built wheel/sdist artifacts, and deterministic scene-level visual regression snapshots.
+
+## Optional analysis and editor
+
+The optional application layer keeps the editable structural model, numerical solver, results, renderer, and GUI separate:
+
+```text
+StructuralModel → AnalysisService → anaStruct adapter → AnalysisResults
+       └──────────────────────────────────────────────→ Diagram / SVG
+PySide6 editor → StructuralModel + AnalysisService (never anaStruct directly)
+```
+
+`StructuralModel` currently supports 2D frame/truss members, pinned/fixed/roller supports, nodal forces/moments, and uniform member loads. `AnalysisResults` returns neutral reactions, displacements, and axial/shear/moment/deflection arrays, so a future PyNite backend can use the same GUI and renderer.
+
+```python
+from statics_diagrams.analysis import (
+    AnalysisService, Member, Node, StructuralModel, Support, SupportType, UniformLoad,
+)
+
+model = StructuralModel(title="Uniformly loaded beam")
+model.add_node(Node("A", 0, 0))
+model.add_node(Node("B", 6, 0))
+model.add_member(Member("AB", "A", "B"))
+model.set_support(Support("A", SupportType.PINNED))
+model.set_support(Support("B", SupportType.ROLLER_Y))
+model.add_uniform_load(UniformLoad("AB", q=-10))
+results = AnalysisService().analyze(model)
+```
+
+This is an educational/visual-analysis feature, not certified structural-design software. Validate supported cases against known solutions before using the output for engineering decisions.
 
 ## License
 

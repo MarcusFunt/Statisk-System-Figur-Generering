@@ -174,6 +174,23 @@ def test_svg_attribute_values_are_escaped():
     assert 'onload="evil"' not in svg
 
 
+@pytest.mark.parametrize("factory",[
+    lambda: render_svg(Diagram().text((0,0),"A\x00B")),
+    lambda: render_svg(Diagram(title="A\x08B").beam((0,0),(1,0))),
+    lambda: render_svg(Diagram().text((0,0),"A"),style=Style(font_family="Bad\x01Font")),
+    lambda: render_svg(Diagram().beam((0,0),(1,0),style=ElementStyle(color="red\x0b"))),
+    lambda: render_svg(Diagram().beam((0,0),(1,0)),options=RenderOptions(background="white\x0c")),
+])
+def test_svg_rejects_xml_forbidden_characters(factory):
+    with pytest.raises(ValueError,match="XML 1.0 character"):
+        factory()
+
+
+def test_svg_keeps_permitted_whitespace_and_engineering_unicode_parseable():
+    svg=render_svg(Diagram(title="\tσ\n").text((0,0),"Δ\tAᵧ")).content
+    ElementTree.fromstring(svg)
+
+
 def test_svg_only_import_does_not_eagerly_import_matplotlib(tmp_path):
     code="import sys,statics_diagrams; print('matplotlib' in sys.modules)"
     out=subprocess.check_output([sys.executable,"-c",code],text=True).strip()
